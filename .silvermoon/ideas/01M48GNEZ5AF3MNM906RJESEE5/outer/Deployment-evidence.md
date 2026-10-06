@@ -50,14 +50,9 @@
 
 ## Remaining production verification
 
-以下项目尚未以真实账号和 daemon 验证，因此不能视为完成：
-
-- Microsoft 和 GitHub 各完成一次 production callback。
-- 显式 identity 绑定/解绑、相同 email 隔离、CSRF 和 session 撤销。
-- 检查 production observability，确认没有敏感凭据进入日志。
-
-发生普遍登录失败、账户归属错误或撤销失效时，应停止验证并回滚到上一 Worker
-version；D1 migration 保持向前兼容，不执行破坏性 schema 回退。
+所有部署合同项目均已验证。发生普遍登录失败、账户归属错误或撤销失效时，应停止
+发布并回滚到上一 Worker version；D1 migration 保持向前兼容，不执行破坏性
+schema 回退。
 
 ## Authenticated production verification
 
@@ -75,3 +70,32 @@ version；D1 migration 保持向前兼容，不执行破坏性 schema 回退。
   revoke close，而 token B 的 socket 在观察窗口内继续存活。随后 token B 也被撤销
   并收到 revoke close。
 - 所有 production smoke-test token 均已撤销，系统未保留可用测试凭据。
+
+## Identity and session boundary verification
+
+验证时间：`2026-10-06T16:18:00Z` 至 `2026-10-06T16:26:00Z`。
+
+- Microsoft 和 GitHub 均完成 production callback，并通过 link mode 加入现有
+  Google 账户；三家 identity 同时显示为 linked，原 browser session 保持有效。
+- 缺失 CSRF header 的修改请求返回 403，未知 Origin 的 API 请求返回 403。
+- 登出后原 browser session 访问 `/api/me` 返回 401。
+- 移除两个辅助 identity 后，尝试移除最后一个 Google identity 返回 409。
+- 在移除 GitHub identity 后以 GitHub 执行普通登录。即使 provider email 与原
+  Google identity 相同，返回的 Silvermoon user ID 仍不同，且新账户只包含 GitHub
+  identity，证明没有按 email 自动合并。
+- 上述临时 GitHub-only user 没有 token 或 daemon；验证后退出 session，并以受限
+  条件删除其 user、identity 和 session 三条记录。
+- 重新登录原 Google user 后，Microsoft 和 GitHub 均重新通过新鲜 link callback
+  绑定；最终 user ID 与验证前一致，三家 identity 均恢复。
+- evidence 未记录姓名、email、provider subject、user ID、cookie 或 OAuth code。
+
+## Observability verification
+
+使用 `wrangler tail --format json` 观察一次专门触发的 `/health` 请求：
+
+- Worker version 为 `759561f7-1bb7-4e17-845a-ba3061e44a05`，outcome 为 `ok`，
+  response status 为 200。
+- `logs`、`exceptions` 和 diagnostics 均为空。
+- 事件不含 OAuth code、provider token、session cookie、connection token 或
+  Authorization header。
+- 验证后立即停止 tail；evidence 不持久化请求 IP 或 TLS 指纹。
