@@ -1,1 +1,2 @@
 {"sequence":1,"type":"setAlias","payload":{"alias":"cloudflare-relay-scaffold"}}
+{"sequence":2,"type":"acceptIdeal","payload":{"idealRevision":"ae7713e0510bde321f47cee93f8d07f42810f020"}}
