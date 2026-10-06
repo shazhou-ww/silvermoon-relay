@@ -8,6 +8,7 @@ import {
 interface SocketAttachment {
   connectionId: string;
   daemonId: DaemonId;
+  tokenId: string;
   userId: string;
 }
 
@@ -34,10 +35,11 @@ export class DaemonSession extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     const userId = request.headers.get("x-silvermoon-user-id");
+    const tokenId = request.headers.get("x-silvermoon-token-id");
     const daemonIdResult = daemonReadySchema.shape.daemonId.safeParse(
       request.headers.get("x-silvermoon-daemon-id"),
     );
-    if (!userId || !daemonIdResult.success) {
+    if (!userId || !tokenId || !daemonIdResult.success) {
       return Response.json({ error: "unauthorized" }, { status: 401 });
     }
 
@@ -48,6 +50,7 @@ export class DaemonSession extends DurableObject<Env> {
     const attachment: SocketAttachment = {
       connectionId,
       daemonId: daemonIdResult.data,
+      tokenId,
       userId,
     };
     server.serializeAttachment(attachment);
@@ -118,5 +121,16 @@ export class DaemonSession extends DurableObject<Env> {
         wasClean,
       }),
     );
+  }
+
+  revokeToken(tokenId: string): number {
+    let closed = 0;
+    for (const socket of this.ctx.getWebSockets()) {
+      const attachment = socket.deserializeAttachment() as SocketAttachment;
+      if (attachment.tokenId !== tokenId) continue;
+      socket.close(4003, "connection token revoked");
+      closed += 1;
+    }
+    return closed;
   }
 }
