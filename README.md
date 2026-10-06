@@ -41,6 +41,40 @@ Daemon clients send the access token in `Authorization: Bearer <token>` and the
 stable daemon identity in `X-Silvermoon-Daemon-Id`. Tokens must never be placed
 in URLs or logs.
 
+## Identity and connection tokens
+
+The Pages app signs users in through Google, Microsoft Account, or GitHub.
+Production callbacks are:
+
+```text
+https://relay.silvermoon.work/auth/google/callback
+https://relay.silvermoon.work/auth/microsoft/callback
+https://relay.silvermoon.work/auth/github/callback
+```
+
+OAuth client credentials and relay security keys are Worker secrets:
+
+```text
+GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET
+MICROSOFT_CLIENT_ID
+MICROSOFT_CLIENT_SECRET
+GITHUB_CLIENT_ID
+GITHUB_CLIENT_SECRET
+SESSION_SECRET
+SESSION_SECRET_PREVIOUS
+CONNECTION_TOKEN_PEPPER
+CONNECTION_TOKEN_PEPPER_PREVIOUS
+```
+
+Connection tokens use the `smr1_<public-id>_<secret>` format. The complete
+token is returned only when it is created or rotated; D1 stores only its public
+ID, display hint, metadata, and a peppered HMAC. Browser sessions and OAuth
+provider tokens are separate credentials and cannot connect a daemon.
+During secret rotation, set the previous session secret or token pepper in the
+matching `_PREVIOUS` binding until all old sessions or tokens have been
+rotated, then remove it.
+
 ## Validate
 
 ```sh

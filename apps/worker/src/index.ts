@@ -1,57 +1,83 @@
 import { daemonIdSchema } from "@silvermoon-relay/protocol";
+import { handleApi } from "./api";
 import { authenticate } from "./auth";
+import type { AppEnv } from "./env";
+import { completeOAuth, beginOAuth } from "./oauth";
 export { DaemonSession } from "./daemon-session";
 
 function jsonError(status: number, error: string): Response {
   return Response.json({ error }, { status });
 }
 
-export default {
-  async fetch(request, env): Promise<Response> {
-    const url = new URL(request.url);
+async function connectDaemon(
+  request: Request,
+  env: AppEnv,
+  context: ExecutionContext,
+): Promise<Response> {
+  if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+    return jsonError(426, "websocket-upgrade-required");
+  }
+  const connection = await authenticate(request, env, context);
+  if (!connection) return jsonError(401, "unauthorized");
 
+  const daemonId = daemonIdSchema.safeParse(
+    request.headers.get("x-silvermoon-daemon-id"),
+  );
+  if (!daemonId.success) return jsonError(400, "invalid-daemon-id");
+
+  const registration = await env.DB.prepare(
+    `INSERT INTO daemons (id, user_id, connection_token_id, last_seen_at)
+     VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP)
+     ON CONFLICT (id) DO UPDATE SET
+       connection_token_id = excluded.connection_token_id,
+       last_seen_at = CURRENT_TIMESTAMP
+     WHERE user_id = excluded.user_id`,
+  )
+    .bind(daemonId.data, connection.userId, connection.tokenId)
+    .run();
+  if (registration.meta.changes !== 1) {
+    return jsonError(409, "daemon-owner-conflict");
+  }
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO daemon_token_bindings
+      (user_id, connection_token_id, daemon_id)
+     VALUES (?1, ?2, ?3)`,
+  )
+    .bind(connection.userId, connection.tokenId, daemonId.data)
+    .run();
+
+  const headers = new Headers(request.headers);
+  headers.delete("authorization");
+  headers.set("x-silvermoon-user-id", connection.userId);
+  headers.set("x-silvermoon-token-id", connection.tokenId);
+  headers.set("x-silvermoon-daemon-id", daemonId.data);
+  return env.DAEMON_SESSIONS.getByName(
+    `${connection.userId}:${daemonId.data}`,
+  ).fetch(new Request(request, { headers }));
+}
+
+export default {
+  async fetch(request, env, context): Promise<Response> {
+    const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
       return Response.json({ service: "silvermoon-relay", status: "ok" });
     }
 
-    if (request.method !== "GET" || url.pathname !== "/v1/daemon/connect") {
-      return jsonError(404, "not-found");
-    }
-    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-      return jsonError(426, "websocket-upgrade-required");
-    }
-
-    const user = await authenticate(request, env.DB);
-    if (!user) {
-      return jsonError(401, "unauthorized");
+    const authMatch = /^\/auth\/(google|microsoft|github)\/(start|callback)$/u
+      .exec(url.pathname);
+    if (request.method === "GET" && authMatch) {
+      return authMatch[2] === "start"
+        ? beginOAuth(request, env, authMatch[1])
+        : completeOAuth(request, env, authMatch[1]);
     }
 
-    const daemonId = daemonIdSchema.safeParse(
-      request.headers.get("x-silvermoon-daemon-id"),
-    );
-    if (!daemonId.success) {
-      return jsonError(400, "invalid-daemon-id");
+    if (url.pathname.startsWith("/api/")) {
+      return handleApi(request, env, context);
     }
 
-    const registration = await env.DB.prepare(
-      `INSERT INTO daemons (id, user_id, last_seen_at)
-       VALUES (?1, ?2, CURRENT_TIMESTAMP)
-       ON CONFLICT (id) DO UPDATE SET last_seen_at = CURRENT_TIMESTAMP
-       WHERE user_id = excluded.user_id`,
-    )
-      .bind(daemonId.data, user.id)
-      .run();
-    if (registration.meta.changes !== 1) {
-      return jsonError(409, "daemon-owner-conflict");
+    if (request.method === "GET" && url.pathname === "/v1/daemon/connect") {
+      return connectDaemon(request, env, context);
     }
-
-    const headers = new Headers(request.headers);
-    headers.delete("authorization");
-    headers.set("x-silvermoon-user-id", user.id);
-    headers.set("x-silvermoon-daemon-id", daemonId.data);
-
-    return env.DAEMON_SESSIONS.getByName(
-      `${user.id}:${daemonId.data}`,
-    ).fetch(new Request(request, { headers }));
+    return jsonError(404, "not-found");
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<AppEnv>;
