@@ -32,7 +32,8 @@ OAuth transaction 中必须恢复并验证发起 mode、session 和 return targe
 
 把现有单字段 access token 鉴权替换为 connection token 验证，把 user/token/daemon
 上下文传入每 daemon Durable Object。DO WebSocket attachment 保存 token ID；
-token 撤销时查询相关 daemon 并通过 RPC 主动关闭使用该 token 的在线连接。
+握手时持久化 token 到 daemon 的绑定；token 撤销时查询所有相关 daemon 并通过
+RPC 主动关闭使用该 token 的在线连接。
 
 ### I-S06: 建立登录与安全管理界面
 
@@ -69,7 +70,7 @@ session。
 ### I-AC04: 撤销影响在线 daemon
 
 测试证明 token ID 写入 DO WebSocket attachment；撤销后对应 DO 中使用该 token 的
-socket 被关闭，而其他 token 的连接不受影响，新握手立即返回 401。
+socket 被关闭，而同一 daemon 上其他 token 的连接不受影响，新握手立即返回 401。
 
 ### I-AC05: 身份绑定避免账户接管
 

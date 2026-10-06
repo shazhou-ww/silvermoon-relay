@@ -73,6 +73,13 @@ async function createSchema(): Promise<void> {
       connection_token_id TEXT,
       UNIQUE (user_id, id)
     )`,
+    `CREATE TABLE daemon_token_bindings (
+      user_id TEXT NOT NULL,
+      connection_token_id TEXT NOT NULL,
+      daemon_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, connection_token_id, daemon_id)
+    )`,
   ];
   for (const statement of statements) {
     await env.DB.prepare(statement).run();
@@ -266,6 +273,24 @@ describe("relay identity and token service", () => {
     });
     socket.accept();
 
+    const other = await createToken(appEnv, "user-01", { label: "Other daemon" });
+    const otherUpgrade = await SELF.fetch(
+      "https://relay.silvermoon.work/v1/daemon/connect",
+      {
+        headers: {
+          authorization: `Bearer ${other.token}`,
+          connection: "Upgrade",
+          upgrade: "websocket",
+          "sec-websocket-version": "13",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+          "x-silvermoon-daemon-id": "daemon-01",
+        },
+      },
+    );
+    expect(otherUpgrade.status).toBe(101);
+    const otherSocket = otherUpgrade.webSocket!;
+    otherSocket.accept();
+
     const revoked = await SELF.fetch(
       `https://relay.silvermoon.work/api/tokens/${body.metadata.id}`,
       { method: "DELETE", headers: sessionHeaders(session) },
@@ -287,6 +312,19 @@ describe("relay identity and token service", () => {
       },
     );
     expect(rejected.status).toBe(401);
+
+    const acknowledged = new Promise<MessageEvent>((resolve) => {
+      otherSocket.addEventListener("message", (event) => {
+        if (JSON.parse(String(event.data)).type === "ready.ack") resolve(event);
+      });
+    });
+    otherSocket.send(JSON.stringify({
+      type: "ready",
+      protocolVersion: 1,
+      daemonId: "daemon-01",
+    }));
+    await expect(acknowledged).resolves.toBeDefined();
+    otherSocket.close(1000, "test complete");
   });
 
   it("prevents removing the final login identity", async () => {

@@ -61,7 +61,7 @@ async function notifyTokenRevocation(
   tokenId: string,
 ): Promise<void> {
   const daemons = await env.DB.prepare(
-    `SELECT id FROM daemons
+    `SELECT daemon_id AS id FROM daemon_token_bindings
      WHERE user_id = ?1 AND connection_token_id = ?2`,
   )
     .bind(userId, tokenId)

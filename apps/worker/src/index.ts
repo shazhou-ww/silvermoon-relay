@@ -38,6 +38,13 @@ async function connectDaemon(
   if (registration.meta.changes !== 1) {
     return jsonError(409, "daemon-owner-conflict");
   }
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO daemon_token_bindings
+      (user_id, connection_token_id, daemon_id)
+     VALUES (?1, ?2, ?3)`,
+  )
+    .bind(connection.userId, connection.tokenId, daemonId.data)
+    .run();
 
   const headers = new Headers(request.headers);
   headers.delete("authorization");
