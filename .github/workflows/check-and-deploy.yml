@@ -1,0 +1,55 @@
+name: Check and deploy
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - release
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm --filter @silvermoon-relay/worker d1:migrate:local
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Apply D1 migrations
+        run: pnpm --filter @silvermoon-relay/worker exec wrangler d1 migrations apply silvermoon-relay --remote
+      - name: Deploy relay Worker
+        run: pnpm --filter @silvermoon-relay/worker exec wrangler deploy
+      - name: Deploy Pages application
+        run: pnpm exec wrangler pages deploy apps/web/dist --project-name silvermoon-work --branch release
