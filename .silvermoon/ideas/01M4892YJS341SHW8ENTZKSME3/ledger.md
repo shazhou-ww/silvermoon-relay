@@ -26,8 +26,16 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 步骤标题
+- [ ] **D-S01:** 配置最小权限部署凭据
+- [ ] **D-S02:** 创建 Cloudflare dummy 资源
+- [ ] **D-S03:** 通过 release merge 触发首次部署
+- [ ] **D-S04:** 绑定域名并验证 dummy service
+- [ ] **D-S05:** 固化部署证据与恢复路径
 
 ### Deployment acceptance criteria
 
-- [ ] **D-AC01:** 标准标题
+- [ ] **D-AC01:** GitHub secrets 已安全配置
+- [ ] **D-AC02:** release merge workflow 成功
+- [ ] **D-AC03:** Worker 与数据资源在线
+- [ ] **D-AC04:** Pages 与主域名在线
+- [ ] **D-AC05:** dummy 部署可重复且无秘密
