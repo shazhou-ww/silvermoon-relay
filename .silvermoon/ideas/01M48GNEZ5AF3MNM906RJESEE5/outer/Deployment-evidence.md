@@ -52,10 +52,26 @@
 
 以下项目尚未以真实账号和 daemon 验证，因此不能视为完成：
 
-- 三家 provider 各完成一次 production callback 和 session 建立。
+- Microsoft 和 GitHub 各完成一次 production callback。
 - 显式 identity 绑定/解绑、相同 email 隔离、CSRF 和 session 撤销。
-- connection token 一次性显示、真实 daemon WSS、轮换和在线撤销隔离。
 - 检查 production observability，确认没有敏感凭据进入日志。
 
 发生普遍登录失败、账户归属错误或撤销失效时，应停止验证并回滚到上一 Worker
 version；D1 migration 保持向前兼容，不执行破坏性 schema 回退。
+
+## Authenticated production verification
+
+验证时间：`2026-10-06T16:11:00Z` 至 `2026-10-06T16:15:10Z`。
+
+- Google production callback 成功返回 `https://silvermoon.work/?auth=signed-in`。
+- 页面展示已认证账户、Google identity 和当前 browser session；evidence 未记录姓名、
+  email、cookie、OAuth code 或 provider token。
+- 创建 connection token 后，完整值只在一次性面板显示；关闭面板后列表只显示
+  public ID 和尾部提示。
+- token 建立真实 daemon WSS 后返回 HTTP 101 和 `relay.ready`，列表随后显示最近
+  使用日期。
+- 撤销 token 后在线 socket 收到 `connection token revoked`，临时 token 已清理。
+- 使用两个不同 token 同时连接同一 daemon ID；撤销 token A 后 A 的 socket 收到
+  revoke close，而 token B 的 socket 在观察窗口内继续存活。随后 token B 也被撤销
+  并收到 revoke close。
+- 所有 production smoke-test token 均已撤销，系统未保留可用测试凭据。

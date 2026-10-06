@@ -30,7 +30,7 @@
 - [x] **D-S02:** 配置 production Worker secrets
 - [x] **D-S03:** 通过 release workflow 部署
 - [ ] **D-S04:** 验证 production 身份与 session 边界
-- [ ] **D-S05:** 验证 production connection token 生命周期
+- [x] **D-S05:** 验证 production connection token 生命周期
 - [x] **D-S06:** 固化证据与回滚条件
 
 ### Deployment acceptance criteria
@@ -38,6 +38,6 @@
 - [ ] **D-AC01:** 三方 production callback 可用
 - [x] **D-AC02:** Production secrets 安全配置
 - [ ] **D-AC03:** 身份和 session 行为符合合同
-- [ ] **D-AC04:** Connection token 和在线撤销可用
+- [x] **D-AC04:** Connection token 和在线撤销可用
 - [x] **D-AC05:** Release 可追溯且服务健康
 - [ ] **D-AC06:** 回滚与观测准备完成
