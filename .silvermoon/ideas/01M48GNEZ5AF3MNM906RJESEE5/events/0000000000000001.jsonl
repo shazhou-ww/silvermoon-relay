@@ -1,1 +1,2 @@
 {"sequence":1,"type":"setAlias","payload":{"alias":"oauth-identity-connection-tokens"}}
+{"sequence":2,"type":"acceptIdeal","payload":{"idealRevision":"f1ab529ac3f10355fb0b84cbdccc423d1c2f837f"}}
