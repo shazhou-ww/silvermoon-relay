@@ -1,0 +1,43 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "silvermoon-relay",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-10-06",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"routes": [
+		{
+			"pattern": "relay.silvermoon.work",
+			"custom_domain": true
+		}
+	],
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "silvermoon-relay",
+			"database_id": "f1d42229-980e-48f8-b863-f6125dc377e0",
+			"migrations_dir": "migrations"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "DAEMON_SESSIONS",
+				"class_name": "DaemonSession"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"DaemonSession"
+			]
+		}
+	]
+}
