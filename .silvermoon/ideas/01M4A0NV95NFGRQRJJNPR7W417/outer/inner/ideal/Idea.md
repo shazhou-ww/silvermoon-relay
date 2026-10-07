@@ -90,7 +90,7 @@ Silvermoon reducer、不代写 lifecycle decision、不把自己的数据库状�
 
 - 浏览器 session 授权的 client、registered project、idea route、Silvermoon report、
   interaction、observation stream 和显式 review decision API。
-- connection token 授权的 `/v1/client/connect` WSS 子协议，以及 route ownership、
+- connection token 授权的 `/v1/clients/{clientId}/connect` WSS 子协议，以及 route ownership、
   capability、lease、resume 和 reconciliation。
 - `ProjectRuntime.next/replay/readSince/appendInteraction` 与
   `AgentAdapter.start/observe/send/events` 的远程编排。
@@ -153,7 +153,8 @@ Silvermoon reducer、不代写 lifecycle decision、不把自己的数据库状�
   不能成为 decision 或 lifecycle 事实。
 - connector 可以承载多个 client 和 routes，但每条消息都绑定握手得到的 user、
   client、token、route lease 与 connection generation；自报 identity 不扩大授权。
-- 现有 `/v1/daemon/connect` 仅可作为限时兼容入口映射到 client connector，不能让
-  daemon identity 继续成为 project/idea route 或公开 API resource。
+- 现有 `/v1/daemon/connect` 仅可作为限时兼容入口映射到
+  `/v1/clients/{clientId}/connect`，不能让 daemon identity 继续成为 project/idea
+  route 或公开 API resource。
 - 运行时依赖 pin 到精确 Silvermoon `0.x` 版本；升级前审核 changelog、声明和 structured
   report shape，并通过兼容性测试。

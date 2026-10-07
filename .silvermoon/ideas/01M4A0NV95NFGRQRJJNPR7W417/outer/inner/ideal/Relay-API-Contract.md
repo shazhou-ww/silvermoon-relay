@@ -61,9 +61,21 @@ Wire request 使用 `projectId`；connector 在授权后将其解析为已登记
 所有 API 使用 browser session、Origin 与 CSRF 边界；响应 `Cache-Control: no-store`
 并含 relay `requestId`。资源不属于当前用户时与不存在使用相同外部语义。
 
+除顶层 client collection 外，所有资源路由都按所有权层级嵌套：
+
+```text
+/v1/clients/{clientId}
+/v1/clients/{clientId}/projects/{projectId}
+/v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}
+```
+
+`clientId`、`projectId` 和 `ideaId` 在每层都参与授权与 route correlation。API 不提供
+平行的 `/routes/...` shortcut，以免同一 `IdeaRoute` 出现两套 canonical URL。
+
 ### Discovery
 
 - `GET /v1/clients`
+- `GET /v1/clients/{clientId}`
 - `GET /v1/clients/{clientId}/projects`
 - `GET /v1/clients/{clientId}/projects/{projectId}/ideas`
 
@@ -72,7 +84,7 @@ Idea 列表来自 connector 在注册 project root 中调用项目自身版本�
 worktree，也不从数据库中派生 phase。该 runtime boundary 与 `next(route)` 分离：
 inventory 查询不选择 idea，route 导航不隐式列出 inventory。
 
-### `GET /v1/routes/{clientId}/{projectId}/{ideaId}/next`
+### `GET /v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}/next`
 
 connector 调用 `ProjectRuntime.next(route)`，响应保留：
 
@@ -94,7 +106,7 @@ connector 调用 `ProjectRuntime.next(route)`，响应保留：
 Relay 只验证已支持的 envelope/version/route correlation，不重写四个 projections。
 `exitCode: 1` 是 structured invalid/unavailable report，不转成 transport 500。
 
-### `GET /v1/routes/{clientId}/{projectId}/{ideaId}/events`
+### `GET /v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}/events`
 
 读取项目自身 Silvermoon event stream 的 projection。首次读取要求 full replay；后续
 可以传准确 `afterLength` 与 `afterDigest`，connector 调用
@@ -115,7 +127,7 @@ Relay 只验证已支持的 envelope/version/route correlation，不重写四个
 changed/deleted prefix、非 record byte boundary 或 malformed receipt 是显式 conflict，
 不能自动 full reset 后继续 mutation。
 
-### `POST /v1/routes/{clientId}/{projectId}/{ideaId}/interactions`
+### `POST /v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}/interactions`
 
 请求：
 
@@ -162,7 +174,7 @@ changed/deleted prefix、非 record byte boundary 或 malformed receipt 是显�
 
 ### Interaction observation stream
 
-`GET /v1/routes/{clientId}/{projectId}/{ideaId}/interactions/{interactionId}/observations`
+`GET /v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}/interactions/{interactionId}/observations`
 使用 SSE。Relay observation stream 的 opaque SSE ID 与 Silvermoon event-log cursor
 完全独立。事件包括：
 
@@ -202,6 +214,12 @@ connector 对新 interaction 按以下顺序执行：
 
 Review action 独立于 interaction endpoint。请求至少绑定：
 
+```text
+POST /v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}/decisions
+```
+
+请求 body 至少包含：
+
 ```json
 {
   "decisionId": "0199...",
@@ -223,10 +241,12 @@ decision。revision、prefix 或 primary 改变时返回 stale decision，不重
 
 ## Client connector WebSocket
 
-正式握手使用 `GET /v1/client/connect`、connection token 和
-`X-Silvermoon-Client-Id`。第一条 connector 消息是 `client.hello`，包含协议版本、
-connection ID、connector metadata、capabilities 和 relay observation resume cursor。
-Relay 以 `relay.welcome` 返回 connection generation、lease 与 heartbeat 参数。
+正式握手使用 `GET /v1/clients/{clientId}/connect`、connection token 和
+`X-Silvermoon-Client-Id`。path 与 header 中的 ID 必须完全一致，否则返回
+`400 ambiguous-client-identity`；token 也必须属于该 client。第一条 connector 消息是
+`client.hello`，包含协议版本、connection ID、connector metadata、capabilities 和
+relay observation resume cursor。Relay 以 `relay.welcome` 返回 connection
+generation、lease 与 heartbeat 参数。
 
 ### Relay 到 connector
 
@@ -297,5 +317,6 @@ registry projection；消息自报 identity 不扩大授权。
 - CI 用 pinned Silvermoon 版本验证 reports/receipts fixtures，并验证文档示例、共享
   schema、Worker route 与 connector contract 不漂移。
 - `/v1/daemon/connect`、`X-Silvermoon-Daemon-Id`、`task.submit` 和 `/v1/tasks`
-  只属于旧脚手架兼容/移除清单，不进入正式 API。已有数据通过 migration 保留 identity
-  与 token ownership，但不把旧 task rows 转换成虚构 Silvermoon interactions。
+  只属于旧脚手架兼容/移除清单，不进入正式 API。旧连接入口映射到 canonical
+  `/v1/clients/{clientId}/connect`；已有数据通过 migration 保留 identity 与 token
+  ownership，但不把旧 task rows 转换成虚构 Silvermoon interactions。
