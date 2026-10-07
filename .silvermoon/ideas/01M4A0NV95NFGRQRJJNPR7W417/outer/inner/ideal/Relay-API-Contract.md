@@ -1,322 +1,291 @@
-# Relay API v1 补充契约
+# Aggregate Relay Stream v1 补充契约
 
-本文补充 `Idea.md` 的 wire-level 设计。若两者冲突，以 `Idea.md` 为准。Relay API
-协调 Silvermoon route 的交互和观察，不定义 task 或复制 Silvermoon lifecycle。
+本文补充 `Idea.md` 的 wire-level 设计。若冲突，以 `Idea.md` 为准。核心数据面是多
+endpoint causal stream；client/project/idea API 是辅助 control plane。
 
-## 核心资源
+## 拓扑
 
-### Client
+每个用户映射到一个 Relay Hub Durable Object。Hub 同时持有：
 
-`client` 是用户拥有的逻辑 relay endpoint。daemon 可以作为 connector kind，但不作为
-资源 identity：
+- 一个或多个 upstream agent-like WebSocket；
+- 用户拥有的 client connector WebSockets；
+- 多条 aggregate streams；
+- 每条 stream 的固定 member client snapshot；
+- 每 endpoint、每 stream 的 processed frontier 与 in-flight credit。
+
+每条 aggregate stream 创建一个逻辑 `causal-weave` Channel。上游 writer 是一个
+endpoint，每个 member client 是一个 endpoint。所有成功登记的消息属于同一 causal
+history；上游消息广播给所有 member clients，client 消息汇聚并广播给上游及其他
+members，使每个 endpoint 都可以形成真实闭合 frontier。
+
+## Control plane HTTP
+
+### Client observability
+
+```text
+GET /v1/clients
+GET /v1/clients/{clientId}
+GET /v1/clients/{clientId}/projects
+GET /v1/clients/{clientId}/projects/{projectId}/ideas
+```
+
+这些 API 返回 presence、capabilities 和 client 自己公布的 inventory observation。
+它们用于选择 stream members 与诊断，不用于发送 Agent interaction。
+
+### Stream lifecycle
+
+```text
+POST /v1/streams
+GET /v1/streams/{streamId}
+GET /v1/streams/{streamId}/messages
+POST /v1/streams/{streamId}/close
+GET /v1/streams/{streamId}/connect
+```
+
+`POST /v1/streams` 请求：
 
 ```json
 {
-  "id": "client-01",
-  "displayName": "Laptop",
-  "connection": "online",
-  "lastSeenAt": "2026-10-07T01:30:00Z",
-  "capabilities": {
-    "silvermoonReportProtocol": 1,
-    "eventV2": true,
-    "agentObservation": "activity",
-    "resumeSession": true,
-    "sendWhileRunning": true
-  },
-  "connector": {
-    "kind": "daemon",
-    "version": "0.1.0"
+  "memberClientIds": ["client-01", "client-02"],
+  "label": "My aggregate agent",
+  "context": {
+    "projectId": "project-01",
+    "ideaId": "01M4A0NV95NFGRQRJJNPR7W417"
   }
 }
 ```
 
-`connection` 是 presence observation，不承诺 route 可解析、Agent session 健康或消息
-已处理。
+`memberClientIds` 是创建时展开的明确 snapshot，不能为空、重复或包含 foreign client。
+`context` 只是提供给 application messages 的默认 hint，不改变 channel identity，也
+不要求所有 members 拥有该 route。
 
-### Registered project
-
-Project 以 relay 生成的 opaque `projectId` 暴露，响应同时提供 canonical
-credential-free `projectUrl`。connector 只有在本机 `LocalProjectRegistry` 已成功
-注册并验证 project 后才能公布它。Relay 不接收或返回本机 filesystem path。
-
-### Idea route
-
-所有运行时操作使用：
+成功响应：
 
 ```json
 {
-  "clientId": "client-01",
-  "projectId": "project-01",
-  "projectUrl": "https://github.com/example/project.git",
-  "ideaId": "01M4A0NV95NFGRQRJJNPR7W417"
+  "stream": {
+    "id": "stream-01",
+    "state": "open",
+    "generation": 1,
+    "memberClientIds": ["client-01", "client-02"],
+    "currentFrontier": [],
+    "createdAt": "2026-10-07T02:30:00Z"
+  },
+  "requestId": "0199..."
 }
 ```
 
-Wire request 使用 `projectId`；connector 在授权后将其解析为已登记的 canonical
-`projectUrl`，再构造 Silvermoon `IdeaRoute { projectUrl, ideaId }`。Alias 只用于
-展示和搜索，不作为 route identity。
+`GET .../messages` 是诊断/恢复读取接口，使用 base64url 编码的 canonical frontier 和
+有界 page limit。普通实时消费使用 WebSocket page/ack protocol。
 
-## Browser HTTP API
+`close` 是幂等 control operation。进入 `draining` 后拒绝新 publish，等待各 endpoint
+追平或到达 deadline，再进入 `closed`。关闭不删除 causal history。
 
-所有 API 使用 browser session、Origin 与 CSRF 边界；响应 `Cache-Control: no-store`
-并含 relay `requestId`。资源不属于当前用户时与不存在使用相同外部语义。
+## WebSocket endpoints
 
-除顶层 client collection 外，所有资源路由都按所有权层级嵌套：
+### Upstream agent-like stream
 
 ```text
-/v1/clients/{clientId}
-/v1/clients/{clientId}/projects/{projectId}
-/v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}
+GET /v1/streams/{streamId}/connect
 ```
 
-`clientId`、`projectId` 和 `ideaId` 在每层都参与授权与 route correlation。API 不提供
-平行的 `/routes/...` shortcut，以免同一 `IdeaRoute` 出现两套 canonical URL。
+上游连接以 browser session 或明确的 stream credential 鉴权。一个 stream 同时只有
+一个活动 upstream writer generation；额外只读 observers 必须声明 observer mode，
+不能使用 writer endpoint ID。
 
-### Discovery
-
-- `GET /v1/clients`
-- `GET /v1/clients/{clientId}`
-- `GET /v1/clients/{clientId}/projects`
-- `GET /v1/clients/{clientId}/projects/{projectId}/ideas`
-
-Idea 列表来自 connector 在注册 project root 中调用项目自身版本的
-`silvermoon list-ideas --json` 后的 structured observation。Relay 不扫描 arbitrary
-worktree，也不从数据库中派生 phase。该 runtime boundary 与 `next(route)` 分离：
-inventory 查询不选择 idea，route 导航不隐式列出 inventory。
-
-### `GET /v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}/next`
-
-connector 调用 `ProjectRuntime.next(route)`，响应保留：
-
-```json
-{
-  "protocolVersion": 1,
-  "exitCode": 0,
-  "report": {
-    "intention": {},
-    "observation": {},
-    "actions": {},
-    "response": {}
-  },
-  "observedAt": "2026-10-07T01:31:00Z",
-  "requestId": "0199..."
-}
-```
-
-Relay 只验证已支持的 envelope/version/route correlation，不重写四个 projections。
-`exitCode: 1` 是 structured invalid/unavailable report，不转成 transport 500。
-
-### `GET /v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}/events`
-
-读取项目自身 Silvermoon event stream 的 projection。首次读取要求 full replay；后续
-可以传准确 `afterLength` 与 `afterDigest`，connector 调用
-`ProjectRuntime.readSince`。返回 cursor：
-
-```json
-{
-  "eventLog": {
-    "length": 423,
-    "digest": "c4015dbdf87bb7a42854a8b11a02c5967ebef07a",
-    "sequence": 4
-  },
-  "events": [],
-  "requestId": "0199..."
-}
-```
-
-changed/deleted prefix、非 record byte boundary 或 malformed receipt 是显式 conflict，
-不能自动 full reset 后继续 mutation。
-
-### `POST /v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}/interactions`
-
-请求：
-
-```json
-{
-  "interactionId": "a4f8f576-d59b-4b28-9cf6-f55f7ca548c3",
-  "message": "继续实现这个 idea",
-  "expectedEventLog": {
-    "length": 423,
-    "digest": "c4015dbdf87bb7a42854a8b11a02c5967ebef07a"
-  }
-}
-```
-
-成功响应为 `202`，表示 connector 已通过 `appendInteraction(type: "ping")` 将消息条件
-追加到项目 event log，并已建立后续 Agent send observation；它不表示 Agent 已消费：
-
-```json
-{
-  "interaction": {
-    "id": "a4f8f576-d59b-4b28-9cf6-f55f7ca548c3",
-    "repository": {
-      "state": "recorded",
-      "type": "ping",
-      "sequence": 5,
-      "length": 512,
-      "digest": "409b76089b860749160c1e1de91f03809359a2d7"
-    },
-    "delivery": {
-      "state": "queued",
-      "boundary": "Agent SDK accepted the send request."
-    },
-    "reply": {
-      "state": "pending"
-    }
-  },
-  "requestId": "0199..."
-}
-```
-
-如果 ping 已记录但 SDK send 结果不确定，响应仍保留 repository fact，并将 delivery
-设为 `unknown`；服务端不得自动 resend。相同完整 payload 的 `interactionId` 重放返回
-同一 interaction，payload 或 route 不同返回 `409 interaction-id-conflict`。
-
-### Interaction observation stream
-
-`GET /v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}/interactions/{interactionId}/observations`
-使用 SSE。Relay observation stream 的 opaque SSE ID 与 Silvermoon event-log cursor
-完全独立。事件包括：
-
-- `delivery.observed`：adapter delivery union 的逐项 observation；
-- `session.observed`：`running | idle | gone | unknown`；
-- `activity.observed`：message 或 tool name/state；
-- `reply.observed`：正式 final reply 已从 `AgentAdapter.events` 产生；
-- `reply.recorded`：同一 reply 已通过 exact-cursor `pong` 写入项目 event log；
-- `reconciliation.required`：项目 prefix、session binding 或 route owner 需人工协调。
-
-断线可按 SSE cursor 续传 relay observations，但这不推进 Silvermoon event cursor。
-
-## Interaction 编排
-
-connector 对新 interaction 按以下顺序执行：
-
-1. 验证 user/client/token/route lease 与本机 registry mapping。
-2. 使用 `ProjectRuntime.replay/readSince` 验证 exact event prefix。
-3. 调用 `appendInteraction({ type: "ping", message, expectedLength,
-   expectedDigest })`。
-4. 持久化 append receipt 与 interaction idempotency record。
-5. 调用 `AgentAdapter.start(route)`；创建或恢复 route 的 durable session binding。
-6. 订阅 `observe(route)` 与 `events(route)`，然后 `send(route, message)`。
-7. 原样上传 delivery observations；不把 `queued` 升级为 `processed`。
-8. 收到正式 reply 后重新 replay/readSince，使用最新 cursor
-   `appendInteraction({ type: "pong", message: reply, ... })`。
-9. pong append 成功后发布 `reply.recorded`。若 prefix 已变，先读取 delta 并协调；
-   不能覆盖、重置或把 stale reply 追加到错误会话。
-
-`ping` 已记录而 send 尚未开始是可恢复但不能盲目继续的状态：操作者先观察 session
-和项目 log，再显式选择恢复 send 或保留 pending goal。send 已调用但结果 uncertain
-时禁止自动 resend。`pong` 和 final reply 都不表示完成，也不移除更早消息；若 reply
-超过 Silvermoon event record 的 byte limit，保留 `reply.observed` 并明确进入
-`reconciliation.required`，不能截断后标记 `reply.recorded`。
-
-## Human decisions
-
-Review action 独立于 interaction endpoint。请求至少绑定：
+### Client connector
 
 ```text
-POST /v1/clients/{clientId}/projects/{projectId}/ideas/{ideaId}/decisions
+GET /v1/clients/{clientId}/connect
 ```
 
-请求 body 至少包含：
+client 使用 connection token；path、header identity 与 token owner 必须一致。一个
+connector socket 可以承载该 client 所属的多条 streams，每个 frame 都含 `streamId`。
+
+两类连接都先发送 `hello`，声明协议版本、connection generation、每条 stream 最后
+durably processed frontier 与可用 receive credit。Relay 返回 `welcome`、authoritative
+membership、accepted generation 和需要 reconcile 的 streams。
+
+## Causal message
+
+网络 JSON 表示：
 
 ```json
 {
-  "decisionId": "0199...",
-  "type": "acceptIdeal",
-  "worldRevision": "fb661bed748013dfd32d111e42974dbfed7d003b",
-  "expectedEventLog": {
-    "length": 512,
-    "digest": "409b76089b860749160c1e1de91f03809359a2d7"
-  },
-  "expectedPrimary": "daed9052bb5442518d887676ec86dc892d7b8f66"
+  "streamId": "stream-01",
+  "endpointId": "client:client-01",
+  "frontier": [
+    ["upstream", "64-lowercase-hex"],
+    ["client:client-01", "64-lowercase-hex"]
+  ],
+  "contentType": "application/vnd.silvermoon-relay.agent-event+json;v=1",
+  "content": "base64url-bytes"
 }
 ```
 
-Relay 只能在 UI 已获得该 exact revision 的显式人类决定后建立请求。connector 重新
-运行 `next/replay`、refresh primary，并通过项目版本的受控 event append 写入对应
-decision。revision、prefix 或 primary 改变时返回 stale decision，不重放旧授权。
-`acceptIdeal`、`acceptInner`、`acceptOuter`、`abandon` 与 `resume` 不得经
-`appendInteraction`，也不能由 Agent reply 触发。
+Relay 根据认证上下文覆盖/验证 `endpointId`，将 frontier 转成
+`ReadonlyMap<EndpointId, MessageHash>`，再调用 `channel.send`。成功 receipt 返回：
 
-## Client connector WebSocket
+```json
+{
+  "type": "message.registered",
+  "streamId": "stream-01",
+  "messageId": {
+    "streamId": "stream-01",
+    "hash": "64-lowercase-hex"
+  },
+  "sequence": 42,
+  "currentFrontier": [
+    ["client:client-01", "64-lowercase-hex"]
+  ]
+}
+```
 
-正式握手使用 `GET /v1/clients/{clientId}/connect`、connection token 和
-`X-Silvermoon-Client-Id`。path 与 header 中的 ID 必须完全一致，否则返回
-`400 ambiguous-client-identity`；token 也必须属于该 client。第一条 connector 消息是
-`client.hello`，包含协议版本、connection ID、connector metadata、capabilities 和
-relay observation resume cursor。Relay 以 `relay.welcome` 返回 connection
-generation、lease 与 heartbeat 参数。
+`messageId` 必须包含 stream ID，因为 causal-weave hash 不覆盖 channel。`sequence`
+只用于同 channel 的稳定分页顺序，不代替 causal frontier。receipt 的
+`currentFrontier` 是 Channel 在登记时看到的整体 tip projection，可能包含发送者并未
+处理的其他 endpoint 消息，因此不能直接保存为该 sender 的 processed frontier。
 
-### Relay 到 connector
+## Broadcast 与读取
 
-- `route.next.request`
-- `route.events.request`
-- `interaction.append-and-send`
-- `decision.append`
-- `route.reconcile`
-- `relay.ping`
+Channel `watch` 通知 Hub 某 stream 发生变化。Hub 不把通知本身当消息，而是为每个有
+credit 的 endpoint 调用：
 
-每个命令有稳定 `commandId`、route、必要 exact preconditions 和 payload hash。
-Relay 可重发未取得 durable receipt 的命令；connector 必须按 `commandId` 幂等，
-相同 ID 不同 payload 产生 protocol conflict。
+```ts
+channel.read({ after: processedFrontier, limit })
+```
 
-### Connector 到 relay
+然后发送：
 
-- `command.recorded`：命令已写入 connector durable inbox，不代表执行完成；
-- `runtime.result`：经过 schema 验证的 ProjectRuntime structured result；
-- `interaction.appended`：ping/pong append structured receipt；
-- `delivery.observed`
-- `session.observed`
-- `activity.observed`
-- `reply.observed`
-- `decision.appended`
-- `reconciliation.required`
-- `client.pong`
+```json
+{
+  "type": "messages.page",
+  "streamId": "stream-01",
+  "pageId": "opaque-id",
+  "messages": [],
+  "nextFrontier": [],
+  "hasMore": false
+}
+```
 
-每条消息绑定握手的 user/client/token/generation。route 必须存在于该 client 公布的
-registry projection；消息自报 identity 不扩大授权。
+consumer 成功处理整页后发送 `messages.ack { streamId, pageId,
+processedFrontier: nextFrontier }`。Hub 只在 ack 与原 page 完全匹配时持久推进该
+consumer frontier 并释放 credit。部分处理不能推进整页 frontier；实现可用更小 page
+而不是接受消息级跳跃 ack。
 
-## 持久化与恢复
+notification 丢失、DO hibernation 或 WebSocket 断线都不丢消息，因为恢复以 durable
+processed frontier 重新 read。slow consumer 不影响其他 consumer。
 
-- D1 保存 user/client/project registry projection、route envelope、interaction
-  idempotency、relay observation stream 和 decision request metadata。
-- 每 client Durable Object 协调 connector generation、command outbox、durable
-  receipt、observation order、lease 和 backpressure。
-- connector 本地 registry/session binding/project Git/event log 是 route execution
-  与 Silvermoon business truth 的权威；relay D1 不是它们的副本权威。
-- DO 与 D1 不存在跨存储原子事务，使用 durable outbox/inbox、stable command ID 和
-  compare-and-set cursor 对账部分失败。
-- connector shutdown 不删除 Copilot session history 或 worktree。`recover` 要求确认
-  旧 owner 已停止；`forgetSession` 要求确认 session 已丢失；两者均不授权 resend。
+发送者也会在自己的 read 中看到已登记消息。Hub 可以在 receipt 后把该消息的发送
+frontier 加上发送 endpoint 的新 hash，形成 self-processed frontier 并持久化；不能
+直接采用 receipt 的整体 `currentFrontier`，因为其中可能包含发送者没有处理的其他
+endpoint tips，也不能仅在内存中跳过 self message。
 
-## 错误与安全
+## Application envelope
 
-统一错误包含稳定 `code`、human `message`、`retryable`、安全的 `details` 和 relay
-`requestId`。至少覆盖：
+首版 content type 定义以下 agent-like event union：
 
-- authentication/origin/CSRF/ownership；
-- unknown client/project/idea route；
-- unsupported Silvermoon/report/event protocol；
-- event prefix conflict、stale decision、primary moved；
-- interaction/command idempotency conflict；
-- route owner/session binding conflict；
-- delivery unknown、session gone、reconciliation required；
-- rate、capacity、payload、backpressure 与暂时内部失败。
+- `user.message`：上游输入，默认广播给所有 members；
+- `agent.reply`：client 的正式面向用户回复；
+- `agent.activity`：非最终 activity 摘要；
+- `agent.session`：`running | idle | gone | unknown` observation；
+- `agent.tool`：默认只含 name、call ID 与 started/succeeded/failed；
+- `client.error`：稳定、脱敏、可归因到 client 的错误；
+- `delivery.observation`：只表达 client/adapter 看见的 transport boundary；
+- `silvermoon.report`：可选 structured four-projection report；
+- `silvermoon.interaction`：可选 project event interaction observation；
+- `route.claim` / `route.release`：需要单 owner 的 route coordination。
 
-消息、report、activity 和 tool details 都可能包含私密代码或 secrets。普通日志只记录
-稳定 ID、route hash、类型、字节数、耗时和结果 code。tool details 默认不跨 relay；
-显式开启时也必须做大小限制、访问控制、短期保留和禁止普通日志。
+所有 envelope 含 application `eventId`、发生方、可选 `inReplyTo` 与可选
+`context { projectId, ideaId }`。`eventId` 方便 application dedupe，但 causal
+registration identity 仍是 `(streamId, hash)`。
 
-## 机器可读契约与兼容
+Relay 验证 envelope schema 和 sender 可发送的 event type，但不解释 Silvermoon
+lifecycle。`agent.activity`、session idle、delivery observation、consumer ack 和
+message registration 都不能替代 `agent.reply` 或 human decision。
 
-- `packages/protocol` 提供 runtime schema 与 TypeScript 类型，但不得重新定义
-  Silvermoon structured report 或 event receipt 的业务语义。
-- OpenAPI 3.1 描述 browser HTTP、SSE 和错误；AsyncAPI 描述 connector WSS 的方向、
-  command、observation 和 close code。
-- CI 用 pinned Silvermoon 版本验证 reports/receipts fixtures，并验证文档示例、共享
-  schema、Worker route 与 connector contract 不漂移。
-- `/v1/daemon/connect`、`X-Silvermoon-Daemon-Id`、`task.submit` 和 `/v1/tasks`
-  只属于旧脚手架兼容/移除清单，不进入正式 API。旧连接入口映射到 canonical
-  `/v1/clients/{clientId}/connect`；已有数据通过 migration 保留 identity 与 token
-  ownership，但不把旧 task rows 转换成虚构 Silvermoon interactions。
+## Silvermoon client mapping
+
+收到含 idea context 的 `user.message` 后，每个 member 都能观察该消息。只有拥有
+对应 registered project/idea 且取得 route claim 的 client 可以执行 mutating Agent
+interaction；其他 clients 发出 capability/not-owner observation。
+
+owner client 在本机负责：
+
+1. 用项目自身 Silvermoon runtime 观察 `whats-next` 与 event cursor；
+2. 按 Silvermoon contract 追加 `ping`；
+3. 驱动 AgentAdapter 并产生 session/activity/reply observations；
+4. 用准确 cursor 追加 `pong`；
+5. 把 structured results 作为 stream messages 发送。
+
+Relay 不把 causal frontier 转换成 Silvermoon `{length,digest}`，也不反向转换。两个
+cursor 各自证明不同边界，仅在 application envelope 中关联。
+
+## `causal-weave@0.1.0` 集成边界
+
+直接使用：
+
+- `createChannel({ persistence, limits })`
+- `send` 的内容寻址、frontier validation、tip/fork/regression 检查与 CAS receipt；
+- `read` 的 causal continuation、stable sequence page、`nextFrontier` 与 `hasMore`；
+- `getState` 的 stream current frontier；
+- `watch` 的变化 notification；
+- exported Result/error unions、codec、hash 和 limits。
+
+Relay 必须实现：
+
+- stream/channel ID、user/client authorization 和 endpoint assignment；
+- DO SQLite `PersistenceStrategy`；
+- WebSocket fan-out、consumer cursor、credit/ack 和 reconnect；
+- application envelope schema、membership、route claim 和 retention；
+- metrics、redaction、capacity 与 operational recovery。
+
+不得假设包提供：
+
+- network delivery、consumer processing proof 或 per-consumer offset；
+- channel/global hash namespace；
+- payload JSON/MIME validation；
+- history GC、snapshot、distributed consensus 或 business exactly-once；
+- Silvermoon lifecycle 或 Agent semantics。
+
+包固定为 exact `0.1.0`。它声明 Node.js 22+，但发布产物运行时零依赖且只使用标准
+ESM、Web Crypto、TextEncoder/TextDecoder、Map 和 typed arrays；采用前必须在
+Cloudflare Worker/Vitest pool 中运行真实 send/read/watch/codec/persistence contract
+测试，而不是只依赖静态代码检查。
+
+## Durable Object persistence
+
+每个用户 Hub DO 的 SQLite 以 `stream_id` 分区，至少保存：
+
+- stream metadata、generation、state 与 member snapshot；
+- causal messages 的 sequence、hash、endpoint、canonical encoded bytes；
+- endpoint tip/frontier 所需索引；
+- consumer processed frontier、pending page/credit 与 connection generation；
+- idempotent control operations、route leases 和 close/drain state。
+
+每个 stream adapter 必须把所有 causal-weave persistence calls 限定到一个
+`stream_id`。`append` 在单个 SQLite transaction 中比较最新 sequence、插入不可变
+record 并推进 high-water mark；冲突返回 `SEQUENCE_CONFLICT`。storage failure 必须
+区分确定未写入与 `APPEND_OUTCOME_UNKNOWN`。
+
+D1 只保存跨连接查询所需的 user/client/presence/inventory 与 stream summary。D1
+projection 落后不影响 DO causal truth，且不能用于生成 frontier。
+
+## 错误与容量
+
+API 原样映射稳定 causal-weave errors，并补充 auth、membership、generation、
+credit、stream state、schema 和 route lease errors。错误不包含 content。
+
+单条 stream 设置低于包 hard limits 的 production profile，包括 message bytes、
+frontier endpoints、page messages/bytes、history nodes、node reads、age 和 total
+bytes。接近任一上限时进入 draining 并要求创建新 stream；不得跳过历史验证、截断
+content、删除中间 nodes 或跨 stream 伪造 frontier。
+
+## 旧协议迁移
+
+- `/v1/daemon/connect` 与 `task.submit` 不进入正式 API。
+- 旧 connection token 可迁移为 client connector token，但 token owner 与 client ID
+  必须保持一致。
+- 旧 task rows 不转换成 causal messages，因为它们没有可信 endpoint/frontier。
+- 旧 per-daemon Durable Object 不作为 aggregate truth；新架构迁移到 per-user Hub
+  DO，并在切换前验证没有双 writer。
