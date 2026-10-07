@@ -1,137 +1,159 @@
-# 正式 Relay API 与任务投递协议
+# 正式 Relay API 与 Silvermoon 交互协议
 
 ## 意图
 
-为 `silvermoon.work` Web 应用和 Silvermoon client 定义并实现可版本化、可恢复、
-可观测的正式 relay API，使用户能够向自己的在线或暂时离线 client 提交任务，
-可靠观察投递与执行进展，并取得 Agent 的最终回复，而不把任一传输确认误报为任务
-已经处理。
+为 `silvermoon.work` Web 应用和 Silvermoon client 定义可版本化、可恢复、可观测的
+正式 relay API，使用户能够基于明确的 Silvermoon project/idea route 与远端 Agent
+继续交互，同时保持项目仓库、Silvermoon CLI 和显式人类决定作为唯一业务权威。
 
 ## 背景
 
 仓库已经具备 OAuth 登录、浏览器 session、connection token、daemon connector
 使用的 WebSocket 入口、按现有 daemon identity 分片的 Durable Object，以及最小的
-共享协议类型。现有协议把逻辑 client 与承载连接的 daemon 混为同一概念，仅能完成
-连接握手；`task.submit`、`request.accepted` 和 `request.rejected` 仍是未接线的
-占位类型，Web 端也没有正式的 client 列表、任务提交、状态恢复或回复流。
+共享协议类型。当前协议中的 `task.submit`、`request.accepted` 和
+`request.rejected` 是通用任务队列占位，和 Silvermoon 的业务模型不一致。
 
-正式 API 中，`client` 是用户可寻址、可投递任务并产生 Agent 观察的逻辑端点；
-`daemon` 只是可以承载一个或多个 client 连接的 connector 实现。任务、状态、所有权
-和持久化均以 `clientId` 为边界，connector 类型和进程身份只作为连接元数据，不能
-成为公开资源 identity。
+Silvermoon 的持续工作单位不是 relay task，而是由 canonical credential-free
+`projectUrl` 与 canonical `ideaId` 组成的 `IdeaRoute`。项目自己的 Silvermoon
+进程通过 `whats-next` 决定下一步；三个嵌套 world 的 Git tree revision 和显式人类
+决定派生 lifecycle。v2 项目的 `events/` 是持久状态权威，其中 `ping` 是 upstream
+消息，`pong` 是 downstream 消息；它们不代表完成，也不清除更早目标。
 
-Relay 横跨三个不同的事实边界：
+Agent adapter 的 delivery、session、activity 和 final reply 都只是观察：
 
-1. HTTP 请求被 relay 持久接收；
-2. 任务被目标 client 经 connector 写入持久 inbox；
-3. client 对应的 Agent 实际运行并产生可观察活动或最终回复。
+- SDK 接受 send 只能产生 `queued`，随后在没有逐消息消费证据时必须是 `unknown`；
+- session 只有 `running | idle | gone | unknown`，不能映射成 idea lifecycle；
+- activity/tool events 不是正式 Agent reply；
+- final reply 是 Agent idle 时最后一条面向用户的 assistant message，但也不表示
+  ideal 已批准、implementation/deployment 已接受或工作已经完成。
 
-这些事实可能因断线、超时和重试而分别成功、失败或未知。API 必须显式表达这种
-不确定性，并使用幂等键、单调事件序列和游标恢复，避免重复执行或伪造成功状态。
-详细 wire contract 由同一 Ideal World 下的
-`Relay-API-Contract.md` 补充定义；本文件仍是该 idea 的 canonical ideal contract。
+正式 API 中，`client` 是用户可寻址并承载若干 Silvermoon routes 的逻辑端点；
+`daemon` 只是当前 connector 实现。Relay 协调 transport 和 observation，不复制
+Silvermoon reducer、不代写 lifecycle decision、不把自己的数据库状态提升为项目事实。
+详细 wire contract 由同一 Ideal World 下的 `Relay-API-Contract.md` 补充定义。
 
 ## 期望结果
 
-- 已登录用户可以通过版本化 HTTP API 列出自己拥有的 client，看到稳定 `clientId`、
-  展示名、能力、最后在线时间、当前连接状态和脱敏 connector 信息；不存在或属于
-  其他用户的资源使用
-  不可枚举的响应语义。
-- 用户可以提交一个包含调用方生成 UUID `requestId`、目标 `clientId` 和非空
-  `prompt` 的任务。Relay 在返回 `202 Accepted` 前先持久化任务和初始事件；相同
-  用户以相同 `requestId` 和相同规范化 payload 重试时得到同一任务，不会重复投递，
-  payload 不同则得到明确冲突。
-- 任务公开状态至少分为 `delivery` 与 `execution` 两个正交维度。Relay 接收、发送
-  WebSocket frame、client 持久接收、Agent 开始运行和最终回复分别形成不同事件；
-  任一较早事实都不能推导较晚事实。
-- 用户可以读取任务当前投影和有序事件历史，并通过带序列游标的 Server-Sent Events
-  流等待增量。断线后客户端使用 `Last-Event-ID` 或 `after` 游标无损续传；慢消费者
-  或过旧游标收到明确的可恢复错误，而不是静默跳过事件。
-- client connector WSS 协议支持连接协商、能力声明、任务投递、持久接收确认、拒绝、活动
-  观察、最终回复、失败和重连恢复。所有消息包含协议版本以及足够的 task/request/
-  event 标识；未知消息与不支持版本以结构化错误失败。
-- Relay 对 client 采用至少一次投递，对单个任务采用幂等处理。connector 必须先把任务
-  写入本地持久 inbox，再发送 `delivery.accepted`；relay 在确认前重发同一 task 不得
-  启动第二次 Agent 执行。
-- client 经任意 connector 重连时携带最后确认的 relay 投递游标和最后上传的事件游标，双方通过显式
-  resume 交换补齐缺口。连接中断或 send acknowledgment 不足以证明对端消费，结果
-  保持 `unknown` 直到权威事件澄清。
-- 每个任务事件拥有由 relay 分配、从 1 单调递增且不可改写的 `sequence`；事件写入与
-  当前任务投影在同一权威边界内原子推进。重复的 client 事件通过稳定 `eventId`
-  去重，相同 ID 不同 payload 被拒绝并记录协议冲突。
-- D1 保存跨连接可查询的 client、任务、事件投影与幂等元数据；对应 client 的
-  Durable Object 协调活动连接、投递队列、游标和顺序。两者的权威职责、失败恢复和
-  对账路径明确，不依赖仅存于 isolate 内存的状态。
-- HTTP 与 WebSocket 都使用统一、稳定、机器可判断的错误 code，并带相关
-  `requestId`；错误不得回显 token、cookie、完整 prompt、Agent 私密输出或内部异常。
-- 正式契约提供由共享运行时 schema 验证的 TypeScript 类型，并提交一致的 OpenAPI
-  3.1（HTTP/SSE）与 AsyncAPI（client connector WSS）描述。兼容性测试证明文档示例、客户端和
-  Worker 使用同一消息边界。
-- API 具备所有权校验、输入大小限制、速率限制、背压、审计型结构化日志和
-  `Cache-Control: no-store`。用户输入和 Agent 输出按敏感内容处理，不进入普通日志
-  或未授权的分析系统。
-- Web 应用使用正式 API 提供 client 选择、任务提交、投递/执行状态、可恢复活动流和
-  最终回复界面；刷新页面后从服务端投影恢复，不用前端内存伪造状态。
+- 已登录用户可以列出自己拥有的 client，看到稳定 `clientId`、展示名、当前连接
+  observation、能力和脱敏 connector 信息。daemon 仅作为 connector kind，不是公开
+  资源 identity。
+- 每个可交互目标使用准确 `IdeaRoute { projectUrl, ideaId }`。`projectUrl` 是
+  credential-free canonical HTTPS Git remote，`ideaId` 是 canonical ULID；relay
+  不从自由文本、目录名、branch 或本机路径猜测 route。
+- client 只公布其 `LocalProjectRegistry` 已注册并能安全解析的 project，以及这些项目
+  自己的 `silvermoon list-ideas` inventory。Relay 不下发任意本地路径，也不要求
+  connector clone 未注册 repository。
+- Web 用户可以选择一个 client 和 route，读取由该项目自己的 `ProjectRuntime.next`
+  返回的完整结构化 Silvermoon report。Relay 透传并标记 observation provenance，
+  不重新实现 `whats-next` 或从 Markdown 推导 lifecycle。
+- 用户可以向 route 发送非空交互消息。connector 必须先用 `ProjectRuntime.replay`
+  或 `readSince` 观察准确 event-log cursor，再用 `appendInteraction` 将 upstream
+  `ping` 条件追加到项目日志，最后才把同一消息交给 Agent adapter。
+- 每次交互使用调用方生成的幂等 `interactionId`。相同用户、client、route、ID 和
+  payload 的重放返回原 observation；任一字段不同则明确冲突，不能再次 append 或
+  send。
+- `ping` 追加成功只证明项目 event log 已持久记录用户目标，不证明 SDK 已消费消息。
+  SDK send 的 `queued | delivered | processed | unknown` observation 按 adapter 原样
+  暴露；当前 Copilot adapter 不提供消费证据时不得伪造 `delivered` 或 `processed`。
+- client 将 Agent session observation 作为独立流上传：session 状态、面向用户的
+  message observation、tool started/succeeded/failed，以及被明确授权时的 tool
+  details。activity 不写入 Silvermoon event log，也不成为 human decision。
+- Agent adapter 产生正式 final reply 后，connector 重新观察准确 event log，并以
+  最新 `{length, digest}` 条件追加同一 route 的 `pong`。`pong` 持久化成功后，relay
+  才把该 reply 标记为 repository-recorded；回复本身仍不表示 lifecycle 完成，也不
+  清除或替代更早的交互目标。
+- 浏览器能够按 route 读取 ordered Silvermoon interaction messages、当前
+  `lastSignal`、Agent session observation 和正式 replies，并通过游标流断线续传。
+  Silvermoon event cursor 与 relay observation cursor 分开建模，绝不互相替代。
+- lost connection、uncertain send、aborted turn、session error 或 `gone` 都停止自动
+  重发。系统要求先重新观察项目日志和 session binding；恢复、forget 或 resend 必须
+  是显式且可审计的动作。
+- route ownership 在同一时刻只有一个活动 connector owner。connector 使用
+  `LocalProjectRegistry.acquire/recover` 语义防止两个进程并发驱动同一 route；
+  relay 的 lease 只是额外协调，不能替代本机 registry lock。
+- 所有 Silvermoon CLI 调用通过项目自身安装的 `ProjectRuntime` 执行，并保留四个
+  projections：`intention`、`observation`、`actions`、`response`。未知 CLI/report
+  版本、route、event operation 或 malformed receipt 显式失败。
+- 人类可以通过正式、revision-bound 的 review action 提交 approval/acceptance/
+  abandonment 决定；connector 必须重新观察 exact revision、event-log cursor 和
+  primary，再调用项目版本支持的受控 Silvermoon event append。Relay 不从聊天文本、
+  按钮标签、Git 活动或 Agent reply 推断决定。
+- Web 应用围绕 project、idea、当前 phase、canonical contract、interaction 和
+  review gate 呈现体验，而不是展示通用 task queue/status。
+- API 提供统一 schema、OpenAPI（HTTP/stream）和 AsyncAPI（client connector WSS），
+  并对 token、cookie、repository 内容、消息和 tool details 实施所有权、大小、
+  rate、backpressure、日志脱敏与明确错误边界。
 
 ## 范围
 
 ### 范围内
 
-- 浏览器 session 授权的 `/v1/clients`、`/v1/tasks`、单任务读取和任务事件流。
-- connection token 授权的 `/v1/client/connect` 正式 WSS 子协议。
-- client/connector 能力协商、连接替换策略、心跳/租约、断线重连、游标恢复和协议
-  错误。
-- 任务持久接收、幂等提交、至少一次投递、client 持久接收确认与重复抑制。
-- 投递状态、执行状态、活动观察、最终回复和失败事件的持久模型。
-- D1 migration、Durable Object SQLite 状态、共享 Zod schema、OpenAPI、
-  AsyncAPI、契约/集成/恢复测试。
-- Web 端 client 与任务的最小可用流程，以及相关可访问性和错误状态。
-- 现有 `/v1/daemon/connect`、`X-Silvermoon-Daemon-Id`、`daemonId` 与相关存储名称
-  向 client terminology 的兼容迁移；兼容层不得继续向新契约泄漏 daemon 作为资源。
-- 对现有 `/api/*` 身份与 token 管理接口的兼容；只在共享错误/CORS 基础设施需要时
-  做向后兼容调整。
+- 浏览器 session 授权的 client、registered project、idea route、Silvermoon report、
+  interaction、observation stream 和显式 review decision API。
+- connection token 授权的 `/v1/client/connect` WSS 子协议，以及 route ownership、
+  capability、lease、resume 和 reconciliation。
+- `ProjectRuntime.next/replay/readSince/appendInteraction` 与
+  `AgentAdapter.start/observe/send/events` 的远程编排。
+- upstream `ping`、downstream `pong`、exact event cursor 和 final reply 的安全关联。
+- route interaction 的幂等性、uncertain delivery、session binding 和显式恢复模型。
+- v2 event project 的完整支持，以及 v1 不支持 interaction append 时的明确
+  unavailable response；不从其他 report 猜测兼容能力。
+- revision-bound 人类决定的传输、再观察和项目本地受控写入。
+- Web 端 project/idea 导航、当前 Silvermoon report、交互、Agent activity、reply 和
+  review gate 的最小可用流程。
+- 现有 daemon endpoint、headers、protocol types 和存储命名向 client/route/
+  interaction terminology 的兼容迁移。
 
 ### 范围外
 
-- 面向第三方机器客户端的通用 API key、OAuth scope 或公开开发者平台；本阶段 HTTP
-  任务 API 仅供已登录的第一方 Web 客户端使用。
-- 多用户共享 client、组织/角色权限、管理员读取任务内容或跨用户任务搜索。
-- 定时任务、优先级队列、批量任务、附件/文件上传、语音、多模态输入和计费配额。
-- 对已开始任务的强制取消。取消的副作用与 Agent 能力需要独立契约，不能用关闭
-  WebSocket 模拟。
-- token-by-token 模型输出流。正式事件流只传递有界活动摘要和最终 Agent 回复。
-- 自动重试失败的 Agent 执行、跨 client 调度、client 迁移或高可用执行副本。
-- Silvermoon 项目 lifecycle 决策的远程代行。Relay 传输观察和回复，不推断或自动
-  记录 ideal approval、implementation acceptance 或 deployment acceptance。
-- 无限期完整消息归档、全文搜索、导出、删除/保留策略产品化；首版仅建立明确的默认
-  保留上限和后续清理边界。
+- 通用 task queue、`/v1/tasks`、relay 自定义的 queued/running/completed 业务状态、
+  跨 route 调度、优先级、cron、batch 或自动执行重试。
+- 在 relay 中复制 Silvermoon lifecycle reducer、world revision 算法、event grammar、
+  `whats-next` 决策或项目 Git synchronization。
+- Relay 直接读写用户 repository、接受本机路径、执行任意 CLI 命令或自动注册未知
+  project。
+- 从 Agent reply、session idle、ledger checkbox、Git push 或用户沉默推断任何人类
+  decision。
+- 多用户共享 client/project/idea、组织角色、管理员读取私密 repository observation。
+- token-by-token 模型输出、无限 tool transcript、任意 binary attachment 或完整
+  session history备份。
+- 自动恢复 lost Copilot session、自动 forget binding、在 uncertain send 后自动
+  resend，或对任意 tool side effect 提供 exactly-once 保证。
+- 本 idea 内稳定 Silvermoon 的 experimental JavaScript API；relay 必须 pin 精确
+  Silvermoon 版本并显式处理版本升级。
 
 ## 约束
 
-- 生产仅使用 HTTPS/WSS。浏览器继续使用 hardened session cookie、允许 Origin 和
-  CSRF 证明；connector token 仅通过 `Authorization` 握手头传递，绝不进入 URL。
-- HTTP API 使用 `/v1` 资源路径，client connector WSS 使用显式版本协商。协议 v1 内只能做
-  向后兼容的可选字段扩展；破坏性消息或状态语义必须提升 major version。
-- `requestId` 在用户范围内唯一，`taskId` 由 relay 生成且不可猜测。所有时间使用
-  UTC RFC 3339；所有游标为 opaque 或严格单调整数，客户端不得解析内部数据库键。
-- `prompt` 首版 UTF-8 上限 32 KiB；单个活动摘要和最终回复必须有独立上限。超限在
-  权威写入前拒绝，不能截断后声称成功。
-- `202 Accepted` 只表示 relay 已持久接收；WebSocket frame 成功发送只表示 relay
-  尝试投递；只有 client 的持久确认才能进入 `accepted`，只有正式 final reply
-  事件才能进入 `completed`。
-- SSE 只暴露当前用户拥有任务的事件，不接受 token query parameter；代理缓冲、
-  keepalive、连接上限和重连退避必须适配 Cloudflare Workers 限制。
-- 单个 client 同时只有一个活动连接 generation。新连接经过 resume 协商后替换旧
-  连接；旧 generation 后续消息被拒绝，防止分区连接并发推进同一任务。
-- 事件采用追加式模型；修正通过新事件表达，不原地改写历史。面向 Web 的投影可重建，
-  且重建结果必须与在线更新一致。
-- Durable Object 与 D1 之间不能宣称跨存储原子事务。实现必须使用可重放 outbox/
-  inbox、幂等写入和对账来处理部分失败，并测试每个持久化边界的崩溃恢复。
-- 任务内容、活动和回复按用户私密数据处理；日志只记录稳定 ID、事件类型、耗时、
-  大小和结果 code。生产观测不得记录 bearer token、cookie 或消息正文。
-- 默认保留期、速率与并发上限必须成为集中配置并在 API 中返回稳定错误；首版数值可在
-  实施阶段根据 Cloudflare 限制确定，但不能以无限制作为默认行为。
-- daemon connector 可以承载多个 client，但每个 client 必须建立独立授权、游标和
-  connection generation；不能以 connector 进程身份跨 client 读取或推进任务。
-- 实现必须保持现有 OAuth、session、token 轮换/撤销和 client 所有权约束；撤销
-  connection token 后，对应 WSS 仍须立即关闭且不能继续提交事件。
+- 生产仅使用 HTTPS/WSS。浏览器使用 hardened session cookie、允许 Origin 和 CSRF
+  证明；connector token 仅通过 `Authorization` 握手头传递，绝不进入 URL。
+- `IdeaRoute.projectUrl` 必须 canonical、credential-free 并与 project
+  `.silvermoon/config.yaml` 一致；`ideaId` 必须使用 canonical ULID，不接受 alias
+  作为跨边界 identity。
+- Silvermoon event-log cursor 是准确 `{length, digest}`；它不是 checkpoint、
+  session boundary、decision authorization 或 delivery proof。relay observation
+  stream 使用独立 opaque cursor。
+- 对某个 route 的 `ping` 或 `pong` 只有在 connector 返回项目
+  `appendInteraction` 的成功 structured receipt 后才可标记 repository-recorded。
+- 追加 interaction 前后都必须使用项目自己的 runtime 并验证 expected log prefix。
+  prefix 改变时返回 conflict/reconcile-required，不能 reset cursor 或盲重试。
+- decision request 必须绑定 exact world revision、完整 event prefix 和 refreshed
+  primary。interaction append 不携带 expected primary；两类操作不能共用一个简化
+  mutation endpoint。
+- Agent send acknowledgment、WebSocket frame send、relay durable write 和
+  `ping` append 分别是不同事实；API 命名与 UI 不得将它们压缩为“已处理”。
+- final reply 只来自 `AgentAdapter.events` 的正式 reply stream。partial assistant
+  message、tool output、idle notification 或 relay timeout 不能升级为 final reply。
+- route 发生 aborted turn/session error 后 formal reply stream 失败；shutdown 为
+  `gone`；后续 send 为 `unknown`。恢复前必须协调 project log、registry owner 和
+  persisted session binding。
+- tool details 可能包含源码、命令输出或秘密，默认能力只暴露 tool name/state；详细
+  input/output 需要显式产品授权、严格大小限制和不落普通日志策略。
+- Relay 可以持久化 transport envelope、幂等 key、cursor、structured reports 和
+  observations，但项目 event log 与 Git worlds 始终是业务权威。缓存可丢弃重建，
+  不能成为 decision 或 lifecycle 事实。
+- connector 可以承载多个 client 和 routes，但每条消息都绑定握手得到的 user、
+  client、token、route lease 与 connection generation；自报 identity 不扩大授权。
+- 现有 `/v1/daemon/connect` 仅可作为限时兼容入口映射到 client connector，不能让
+  daemon identity 继续成为 project/idea route 或公开 API resource。
+- 运行时依赖 pin 到精确 Silvermoon `0.x` 版本；升级前审核 changelog、声明和 structured
+  report shape，并通过兼容性测试。
