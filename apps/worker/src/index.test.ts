@@ -579,6 +579,15 @@ describe("relay identity and token service", () => {
     };
 
     const now = new Date().toISOString();
+    const staleCommandId = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO connector_commands
+        (id, user_id, connector_id, type, session_id, payload_json, status)
+       VALUES (?1, 'user-01', 'studio-laptop', 'session.history',
+        'stale-session', '{}', 'accepted')`,
+    )
+      .bind(staleCommandId)
+      .run();
     sendRpc(1, "mutation", "register", {
       connectorId: "studio-laptop",
       displayName: "Studio laptop",
@@ -591,6 +600,16 @@ describe("relay identity and token service", () => {
       },
     });
     await waitForData(1);
+    await expect.poll(async () =>
+      env.DB.prepare(
+        `SELECT status, error_code FROM connector_commands WHERE id = ?1`,
+      )
+        .bind(staleCommandId)
+        .first()
+    ).toMatchObject({
+      status: "failed",
+      error_code: "connector-reconnected",
+    });
     sendRpc(2, "mutation", "syncSessions", {
       sessions: [{
         id: "session-existing",
@@ -643,17 +662,45 @@ describe("relay identity and token service", () => {
       sessionId: "session-existing",
     });
     const historyCommandId = String(historyCommand.commandId);
+    const duplicateHistorySync = await SELF.fetch(
+      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-existing/events/sync",
+      {
+        method: "POST",
+        headers: sessionHeaders(session),
+      },
+    );
+    expect(duplicateHistorySync.status).toBe(202);
+    expect(
+      await duplicateHistorySync.json<{
+        command: { id: string; status: string };
+      }>(),
+    ).toMatchObject({
+      command: {
+        id: historyCommandId,
+        status: "sent",
+      },
+    });
     sendRpc(4, "mutation", "commandAccepted", {
       commandId: historyCommandId,
     });
-    sendRpc(5, "mutation", "sessionEvent", {
-      id: "history-event-1",
-      sessionId: "session-existing",
-      sequence: 1,
-      type: "message",
-      role: "assistant",
-      text: "Loaded from local history.",
-      createdAt: now,
+    sendRpc(5, "mutation", "sessionEvents", {
+      events: [{
+        id: "history-event-1",
+        sessionId: "session-existing",
+        sequence: 1,
+        type: "message",
+        role: "user",
+        text: "Load the local history.",
+        createdAt: now,
+      }, {
+        id: "history-event-2",
+        sessionId: "session-existing",
+        sequence: 2,
+        type: "message",
+        role: "assistant",
+        text: "Loaded from local history.",
+        createdAt: now,
+      }],
     });
     await waitForData(5);
     sendRpc(6, "mutation", "commandCompleted", {
@@ -668,8 +715,30 @@ describe("relay identity and token service", () => {
     expect(
       await historyEvents.json<{ events: Array<{ id: string }> }>(),
     ).toMatchObject({
-      events: [expect.objectContaining({ id: "history-event-1" })],
+      events: [
+        expect.objectContaining({ id: "history-event-1" }),
+        expect.objectContaining({ id: "history-event-2" }),
+      ],
     });
+    const currentHistorySync = await SELF.fetch(
+      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-existing/events/sync",
+      {
+        method: "POST",
+        headers: sessionHeaders(session),
+      },
+    );
+    expect(currentHistorySync.status).toBe(200);
+    expect(await currentHistorySync.json()).toMatchObject({
+      command: null,
+      synced: true,
+    });
+    expect(
+      await env.DB.prepare(
+        `SELECT COUNT(*) AS count FROM connector_commands
+         WHERE user_id = 'user-01' AND connector_id = 'studio-laptop'
+           AND session_id = 'session-existing' AND type = 'session.history'`,
+      ).first<{ count: number }>(),
+    ).toMatchObject({ count: 1 });
 
     const create = await SELF.fetch(
       "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions",

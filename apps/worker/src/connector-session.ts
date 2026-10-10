@@ -150,6 +150,7 @@ export class ConnectorSession extends DurableObject<Env> {
       sessionUpdated: (session) =>
         this.upsertSession(attachment, session),
       sessionEvent: (event) => this.storeEvent(attachment, event),
+      sessionEvents: (events) => this.storeEvents(attachment, events),
       commands: (signal) => this.commandStream(attachment, signal),
     };
   }
@@ -161,22 +162,30 @@ export class ConnectorSession extends DurableObject<Env> {
     if (input.connectorId !== attachment.connectorId) {
       throw new Error("Authenticated connector ID does not match registration.");
     }
-    await this.env.DB.prepare(
-      `UPDATE connectors SET display_name = ?1, agent_name = ?2,
-        agent_version = ?3, capabilities_json = ?4, status = 'online',
-        connected_at = CURRENT_TIMESTAMP, disconnected_at = NULL,
-        last_seen_at = CURRENT_TIMESTAMP
-       WHERE user_id = ?5 AND id = ?6`,
-    )
-      .bind(
+    await this.env.DB.batch([
+      this.env.DB.prepare(
+        `UPDATE connector_commands SET status = 'failed',
+          error_code = 'connector-reconnected',
+          error_message = 'The connector reconnected before this command completed.',
+          completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = ?1 AND connector_id = ?2
+           AND status IN ('queued', 'sent', 'accepted')`,
+      ).bind(attachment.userId, attachment.connectorId),
+      this.env.DB.prepare(
+        `UPDATE connectors SET display_name = ?1, agent_name = ?2,
+          agent_version = ?3, capabilities_json = ?4, status = 'online',
+          connected_at = CURRENT_TIMESTAMP, disconnected_at = NULL,
+          last_seen_at = CURRENT_TIMESTAMP
+         WHERE user_id = ?5 AND id = ?6`,
+      ).bind(
         input.displayName,
         input.agent.name,
         input.agent.version ?? null,
         JSON.stringify(input.capabilities),
         attachment.userId,
         attachment.connectorId,
-      )
-      .run();
+      ),
+    ]);
     return {
       protocolVersion: PROTOCOL_VERSION,
       connectionId: attachment.connectionId,
@@ -279,7 +288,14 @@ export class ConnectorSession extends DurableObject<Env> {
     attachment: ConnectionAttachment,
     event: AgentSessionEvent,
   ): Promise<void> {
-    await this.env.DB.batch([
+    await this.storeEvents(attachment, [event]);
+  }
+
+  private async storeEvents(
+    attachment: ConnectionAttachment,
+    events: AgentSessionEvent[],
+  ): Promise<void> {
+    await this.env.DB.batch(events.flatMap((event) => [
       this.env.DB.prepare(
         `INSERT INTO agent_sessions
           (user_id, connector_id, id, title, status, created_at, updated_at,
@@ -318,7 +334,7 @@ export class ConnectorSession extends DurableObject<Env> {
         event.data ? JSON.stringify(event.data) : null,
         event.createdAt,
       ),
-    ]);
+    ]));
   }
 
   private async completeCommand(
@@ -331,7 +347,8 @@ export class ConnectorSession extends DurableObject<Env> {
       `UPDATE connector_commands SET status = ?1, error_code = ?2,
         error_message = ?3, completed_at = CURRENT_TIMESTAMP,
         updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?4 AND user_id = ?5 AND connector_id = ?6`,
+       WHERE id = ?4 AND user_id = ?5 AND connector_id = ?6
+         AND status IN ('queued', 'sent', 'accepted')`,
     )
       .bind(
         outcome,

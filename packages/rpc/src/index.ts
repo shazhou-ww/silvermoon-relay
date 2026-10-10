@@ -29,6 +29,10 @@ export const sessionSyncSchema = z.object({
   sessions: z.array(agentSessionSchema).max(10_000),
 });
 
+export const sessionEventBatchSchema = z.object({
+  events: z.array(agentSessionEventSchema).min(1).max(50),
+});
+
 export const commandCompletedInputSchema = z.object({
   commandId: requestIdSchema,
   outcome: z.enum(["succeeded", "failed"]),
@@ -67,6 +71,7 @@ export interface ConnectorRpcContext {
   ): Promise<void>;
   sessionUpdated(session: AgentSession): Promise<void>;
   sessionEvent(event: AgentSessionEvent): Promise<void>;
+  sessionEvents(events: AgentSessionEvent[]): Promise<void>;
   commands(signal: AbortSignal): AsyncIterable<ConnectorCommand>;
 }
 
@@ -111,6 +116,12 @@ export const connectorRouter = t.router({
     .input(agentSessionEventSchema)
     .mutation(async ({ ctx, input }) => {
       await ctx.sessionEvent(input);
+      return { ok: true as const };
+    }),
+  sessionEvents: procedure
+    .input(sessionEventBatchSchema)
+    .mutation(async ({ ctx, input }) => {
+      await ctx.sessionEvents(input.events);
       return { ok: true as const };
     }),
   commands: procedure.subscription(({ ctx, signal }) =>
