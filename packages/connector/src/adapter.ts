@@ -3,7 +3,7 @@ import type {
   AgentSession,
   AgentSessionEvent,
   ConnectorCapabilities,
-} from "@silvermoon-relay/protocol";
+} from "@silvermoon-ai/protocol";
 
 export type AgentAdapterEvent =
   | { type: "session.updated"; session: AgentSession }

@@ -4,7 +4,7 @@ import type {
   SessionEvent,
   SessionMetadata,
 } from "@github/copilot-sdk";
-import { agentSessionSchema } from "@silvermoon-relay/protocol";
+import { agentSessionSchema } from "@silvermoon-ai/protocol";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentAdapterEvent } from "./adapter.js";
 import { CopilotAgentAdapter } from "./copilot-adapter.js";

@@ -7,11 +7,11 @@ import {
   type ConnectorCommand,
   type ConnectorId,
   PROTOCOL_VERSION,
-} from "@silvermoon-relay/protocol";
+} from "@silvermoon-ai/protocol";
 import {
   connectorRouter,
   type ConnectorRpcContext,
-} from "@silvermoon-relay/rpc";
+} from "@silvermoon-ai/rpc";
 import { acceptTRPCWebSocket } from "./trpc-websocket";
 
 interface ConnectionAttachment {

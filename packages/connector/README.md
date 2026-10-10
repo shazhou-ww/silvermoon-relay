@@ -21,6 +21,12 @@ The Copilot SDK includes its verified platform runtime when available. Set
 `COPILOT_CLI_PATH` only when an existing Copilot CLI installation should be
 used instead.
 
+Install the public package after it has been released:
+
+```powershell
+pnpm add @silvermoon-ai/connector
+```
+
 ## Run
 
 After installing the package, provide a stable device ID and a relay token:
@@ -36,7 +42,7 @@ silvermoon-connector `
 For a checkout of this monorepo:
 
 ```powershell
-pnpm --filter @silvermoon-relay/connector build
+pnpm --filter @silvermoon-ai/connector build
 node .\packages\connector\dist\cli.js --help
 ```
 

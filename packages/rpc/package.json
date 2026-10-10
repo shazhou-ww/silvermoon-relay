@@ -1,5 +1,5 @@
 {
-  "name": "@silvermoon-relay/rpc",
+  "name": "@silvermoon-ai/rpc",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -14,7 +14,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@silvermoon-relay/protocol": "workspace:*",
+    "@silvermoon-ai/protocol": "workspace:*",
     "@trpc/server": "^11.19.0",
     "zod": "^4.1.0"
   },

@@ -1,4 +1,4 @@
-import { connectorIdSchema } from "@silvermoon-relay/protocol";
+import { connectorIdSchema } from "@silvermoon-ai/protocol";
 import { handleApi } from "./api";
 import { authenticate } from "./auth";
 import type { AppEnv } from "./env";

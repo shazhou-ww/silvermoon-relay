@@ -52,7 +52,7 @@ Worker dry run.
 
 ```powershell
 pnpm install
-pnpm --filter @silvermoon-relay/worker d1:migrate:local
+pnpm --filter @silvermoon-ai/worker d1:migrate:local
 pnpm dev
 ```
 
@@ -66,7 +66,7 @@ Create a connection token in the Web UI, build the connector, and start it on
 the device that owns the Copilot sessions:
 
 ```powershell
-pnpm --filter @silvermoon-relay/connector build
+pnpm --filter @silvermoon-ai/connector build
 $env:SILVERMOON_CONNECTION_TOKEN = "smr1_..."
 node .\packages\connector\dist\cli.js `
   --id studio-laptop `
@@ -133,10 +133,29 @@ then remove it.
 
 ```powershell
 pnpm check
-pnpm --filter @silvermoon-relay/worker d1:migrate:local
-pnpm --filter @silvermoon-relay/worker build
+pnpm --filter @silvermoon-ai/worker d1:migrate:local
+pnpm --filter @silvermoon-ai/worker build
 node .\packages\connector\dist\cli.js --help
 ```
+
+## Package scope migration
+
+Workspace packages now use the Silvermoon-AI npm scope:
+
+| Previous package | New package | Publication boundary |
+| --- | --- | --- |
+| `@silvermoon-relay/connector` | `@silvermoon-ai/connector` | Public |
+| `@silvermoon-relay/protocol` | `@silvermoon-ai/protocol` | Private workspace package |
+| `@silvermoon-relay/rpc` | `@silvermoon-ai/rpc` | Private workspace package |
+| `@silvermoon-relay/worker` | `@silvermoon-ai/worker` | Private application package |
+| `@silvermoon-relay/web` | `@silvermoon-ai/web` | Private application package |
+
+Consumers of the connector should replace the package spec and imports with
+`@silvermoon-ai/connector`. The `silvermoon-connector` executable name and
+relay protocol remain unchanged. After the new package is available, registry
+maintainers should deprecate the legacy connector with a message that points
+to `@silvermoon-ai/connector`; the private workspace packages must not be
+published under either scope.
 
 ## Release
 

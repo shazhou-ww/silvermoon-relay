@@ -10,7 +10,7 @@ import {
   type ConnectorId,
   PROTOCOL_VERSION,
   timestampSchema,
-} from "@silvermoon-relay/protocol";
+} from "@silvermoon-ai/protocol";
 import { initTRPC } from "@trpc/server";
 import { z } from "zod";
 

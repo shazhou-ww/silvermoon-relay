@@ -25,7 +25,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
-      - run: pnpm --filter @silvermoon-relay/worker d1:migrate:local
+      - run: pnpm --filter @silvermoon-ai/worker d1:migrate:local
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/release'
@@ -48,8 +48,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - name: Apply D1 migrations
-        run: pnpm --filter @silvermoon-relay/worker exec wrangler d1 migrations apply silvermoon-relay --remote
+        run: pnpm --filter @silvermoon-ai/worker exec wrangler d1 migrations apply silvermoon-relay --remote
       - name: Deploy relay Worker
-        run: pnpm --filter @silvermoon-relay/worker exec wrangler deploy
+        run: pnpm --filter @silvermoon-ai/worker exec wrangler deploy
       - name: Deploy Pages application
         run: pnpm exec wrangler pages deploy apps/web/dist --project-name silvermoon-work --branch release

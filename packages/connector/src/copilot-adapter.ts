@@ -11,7 +11,7 @@ import type {
   AgentSession,
   AgentSessionEvent,
   SessionStatus,
-} from "@silvermoon-relay/protocol";
+} from "@silvermoon-ai/protocol";
 import type { AgentAdapter, AgentAdapterEvent } from "./adapter.js";
 
 interface CopilotSessionHandle {

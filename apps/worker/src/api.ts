@@ -8,7 +8,7 @@ import {
   sessionIdSchema,
   syncSessionHistoryCommandSchema,
   type ConnectorCommand,
-} from "@silvermoon-relay/protocol";
+} from "@silvermoon-ai/protocol";
 import {
   clearSessionCookies,
   readSession,
