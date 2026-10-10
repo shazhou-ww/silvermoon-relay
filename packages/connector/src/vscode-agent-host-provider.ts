@@ -82,6 +82,8 @@ interface EventDraft extends Omit<AgentSessionEvent, "sequence" | "sessionId"> {
   sortOrder: number;
 }
 
+type TurnResponsePart = Turn["responseParts"][number];
+
 interface TrackedSession {
   resource: string;
   state: SessionState;
@@ -237,14 +239,21 @@ function toolEventDraft(
   turnId: string,
   toolCall: ToolCallState,
   createdAt: string,
-  sortOrder: number,
+  partIndex: number,
 ): EventDraft {
   const completed = "success" in toolCall;
-  const failed = completed
-    ? !toolCall.success
-    : toolCall.status === "cancelled";
-  const state = completed || failed
-    ? (failed ? "failed" : "succeeded")
+  const cancelled = !completed && toolCall.status === "cancelled";
+  const waiting = !completed && !cancelled && [
+    "pending-confirmation",
+    "pending-result-confirmation",
+    "auth-required",
+  ].includes(toolCall.status);
+  const state = completed || cancelled
+    ? (cancelled ? "cancelled" : toolCall.success ? "succeeded" : "failed")
+    : waiting
+    ? "waiting"
+    : toolCall.status === "running"
+    ? "running"
     : "started";
   const displayName = toolCall.displayName || toolCall.toolName || "Tool";
   const completionText = completed
@@ -255,19 +264,114 @@ function toolEventDraft(
       turnId,
       "tool",
       toolCall.toolCallId,
-      completed || failed ? "complete" : "start",
+      completed || cancelled ? "complete" : "start",
     ]),
     type: "tool",
     text: completionText
       ?? `${displayName} ${state === "started" ? "started" : state}`,
     data: {
-      toolName: toolCall.toolName,
+      toolName: displayName,
+      internalToolName: toolCall.toolName,
       toolCallId: toolCall.toolCallId,
       state,
+      turnId,
+      partId: toolCall.toolCallId,
+      partIndex,
+      partKind: "tool",
+      update: "snapshot",
     },
     createdAt,
-    sortOrder,
+    sortOrder: partIndex + 1,
   };
+}
+
+function responsePartId(
+  part: TurnResponsePart,
+  partIndex: number,
+): string {
+  if (part.kind === "markdown" || part.kind === "reasoning") return part.id;
+  if (part.kind === "toolCall") return part.toolCall.toolCallId;
+  return `${part.kind}:${partIndex}`;
+}
+
+function responsePartEventDraft(
+  turnId: string,
+  part: TurnResponsePart,
+  createdAt: string,
+  partIndex: number,
+  eventSuffix?: string,
+): EventDraft | null {
+  const partId = responsePartId(part, partIndex);
+  const idParts = [turnId, "part", partId];
+  if (eventSuffix) idParts.push(eventSuffix);
+
+  if (part.kind === "markdown") {
+    const text = boundedContent(part.content, 65_536);
+    return text
+      ? {
+          id: eventId(idParts),
+          type: "message",
+          role: "assistant",
+          text,
+          data: {
+            turnId,
+            partId,
+            partIndex,
+            partKind: "markdown",
+            update: "snapshot",
+          },
+          createdAt,
+          sortOrder: partIndex + 1,
+        }
+      : null;
+  }
+  if (part.kind === "toolCall") {
+    const draft = toolEventDraft(
+      turnId,
+      part.toolCall,
+      createdAt,
+      partIndex,
+    );
+    return eventSuffix ? { ...draft, id: eventId(idParts) } : draft;
+  }
+  if (part.kind === "systemNotification") {
+    const text = boundedContent(stringOrMarkdown(part.content), 65_536);
+    return text
+      ? {
+          id: eventId(idParts),
+          type: "message",
+          role: "system",
+          text,
+          data: {
+            turnId,
+            partId,
+            partIndex,
+            partKind: "system",
+            update: "snapshot",
+          },
+          createdAt,
+          sortOrder: partIndex + 1,
+        }
+      : null;
+  }
+  if (part.kind === "error") {
+    return {
+      id: eventId(idParts),
+      type: "error",
+      text: boundedEventText(part.error.message),
+      data: {
+        turnId,
+        partId,
+        partIndex,
+        partKind: "error",
+        update: "snapshot",
+        errorType: part.error.errorType,
+      },
+      createdAt,
+      sortOrder: partIndex + 1,
+    };
+  }
+  return null;
 }
 
 function turnEventDrafts(
@@ -286,61 +390,26 @@ function turnEventDrafts(
       type: "message",
       role: turn.message.origin.kind === MessageKind.User ? "user" : "system",
       text: message,
+      data: {
+        turnId: turn.id,
+        partId: "request",
+        partIndex: 0,
+        partKind: "request",
+        update: "snapshot",
+      },
       createdAt: startedAt,
       sortOrder: 0,
     });
   }
 
-  const assistantText = turn.responseParts
-    .filter((part) => part.kind === "markdown")
-    .map((part) => part.content)
-    .filter(Boolean)
-    .join("\n\n");
-  let sortOrder = 1;
-  for (const part of turn.responseParts) {
-    if (part.kind === "toolCall") {
-      drafts.push(
-        toolEventDraft(turn.id, part.toolCall, completedAt, sortOrder),
-      );
-      sortOrder += 1;
-      continue;
-    }
-    if (part.kind === "systemNotification") {
-      const text = boundedContent(stringOrMarkdown(part.content), 65_536);
-      if (text) {
-        drafts.push({
-          id: eventId([turn.id, "system", String(sortOrder)]),
-          type: "message",
-          role: "system",
-          text,
-          createdAt: completedAt,
-          sortOrder,
-        });
-      }
-      sortOrder += 1;
-      continue;
-    }
-    if (part.kind === "error") {
-      drafts.push({
-        id: eventId([turn.id, "error"]),
-        type: "error",
-        text: boundedEventText(part.error.message),
-        data: { errorType: part.error.errorType },
-        createdAt: completedAt,
-        sortOrder,
-      });
-      sortOrder += 1;
-    }
-  }
-  if (assistantText.trim()) {
-    drafts.push({
-      id: eventId([turn.id, "assistant"]),
-      type: "message",
-      role: "assistant",
-      text: boundedEventText(assistantText),
-      createdAt: completedAt,
-      sortOrder,
-    });
+  for (const [partIndex, part] of turn.responseParts.entries()) {
+    const draft = responsePartEventDraft(
+      turn.id,
+      part,
+      completedAt,
+      partIndex,
+    );
+    if (draft) drafts.push(draft);
   }
   return drafts;
 }
@@ -365,9 +434,27 @@ export function agentHostChatHistoryToEvents(
           ? "user"
           : "system",
         text: message,
+        data: {
+          turnId: state.activeTurn.id,
+          partId: "request",
+          partIndex: 0,
+          partKind: "request",
+          update: "snapshot",
+        },
         createdAt: startedAt,
         sortOrder: 0,
       });
+    }
+    for (
+      const [partIndex, part] of state.activeTurn.responseParts.entries()
+    ) {
+      const draft = responsePartEventDraft(
+        state.activeTurn.id,
+        part,
+        state.modifiedAt,
+        partIndex,
+      );
+      if (draft) drafts.push(draft);
     }
   }
 
@@ -1109,28 +1196,50 @@ class AgentHostConnection {
           ? "user"
           : "system",
         text,
+        data: {
+          turnId: action.turnId,
+          partId: "request",
+          partIndex: 0,
+          partKind: "request",
+          update: "snapshot",
+        },
         createdAt: validTimestamp(action.startedAt)
           ?? new Date().toISOString(),
         sortOrder: 0,
       });
       return;
     }
-    if (action.type === ActionType.ChatToolCallStart) {
-      this.publishEvent(tracked.sessionId, {
-        id: eventId([action.turnId, "tool", action.toolCallId, "start"]),
-        type: "tool",
-        text: `Started ${action.displayName || action.toolName}`,
-        data: {
-          toolName: action.toolName,
-          toolCallId: action.toolCallId,
-          state: "started",
-        },
-        createdAt: new Date().toISOString(),
-        sortOrder: 0,
-      });
+    if (
+      action.type === ActionType.ChatResponsePart
+      || action.type === ActionType.ChatDelta
+      || action.type === ActionType.ChatReasoning
+    ) {
+      const turn = tracked.state.activeTurn;
+      if (!turn || turn.id !== action.turnId) return;
+      const partId = action.type === ActionType.ChatResponsePart
+        ? responsePartId(action.part, turn.responseParts.length - 1)
+        : action.partId;
+      const partIndex = turn.responseParts.findIndex(
+        (part, index) => responsePartId(part, index) === partId,
+      );
+      if (partIndex < 0) return;
+      const draft = responsePartEventDraft(
+        action.turnId,
+        turn.responseParts[partIndex],
+        new Date().toISOString(),
+        partIndex,
+        `update:${event.params.serverSeq}`,
+      );
+      if (draft) this.publishEvent(tracked.sessionId, draft);
       return;
     }
-    if (action.type === ActionType.ChatToolCallComplete) {
+    if (action.type === ActionType.ChatToolCallStart) {
+      const turn = tracked.state.activeTurn;
+      const partIndex = turn?.responseParts.findIndex(
+        (part) =>
+          part.kind === "toolCall"
+          && part.toolCall.toolCallId === action.toolCallId,
+      ) ?? -1;
       const toolCall = this.findToolCall(
         tracked.state,
         action.turnId,
@@ -1143,7 +1252,34 @@ class AgentHostConnection {
             action.turnId,
             toolCall,
             new Date().toISOString(),
-            0,
+            Math.max(0, partIndex),
+          ),
+        );
+      }
+      return;
+    }
+    if (action.type === ActionType.ChatToolCallComplete) {
+      const toolCall = this.findToolCall(
+        tracked.state,
+        action.turnId,
+        action.toolCallId,
+      );
+      if (toolCall) {
+        const turn = tracked.state.activeTurn?.id === action.turnId
+          ? tracked.state.activeTurn
+          : tracked.state.turns.find((item) => item.id === action.turnId);
+        const partIndex = turn?.responseParts.findIndex(
+          (part) =>
+            part.kind === "toolCall"
+            && part.toolCall.toolCallId === action.toolCallId,
+        ) ?? -1;
+        this.publishEvent(
+          tracked.sessionId,
+          toolEventDraft(
+            action.turnId,
+            toolCall,
+            new Date().toISOString(),
+            Math.max(0, partIndex),
           ),
         );
       }
@@ -1177,6 +1313,8 @@ class AgentHostConnection {
       action.type === ActionType.ChatActivityChanged
       && action.activity
     ) {
+      const activeTurn = tracked.state.activeTurn;
+      const partId = `activity:${event.params.serverSeq}`;
       this.publishEvent(tracked.sessionId, {
         id: eventId([
           this.entry.instanceId,
@@ -1185,6 +1323,17 @@ class AgentHostConnection {
         ]),
         type: "activity",
         text: boundedEventText(action.activity),
+        ...(activeTurn
+          ? {
+              data: {
+                turnId: activeTurn.id,
+                partId,
+                partIndex: activeTurn.responseParts.length,
+                partKind: "activity" as const,
+                update: "snapshot" as const,
+              },
+            }
+          : {}),
         createdAt: new Date().toISOString(),
         sortOrder: 0,
       });

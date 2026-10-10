@@ -27,6 +27,8 @@ import {
   Wrench,
   X,
 } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -54,6 +56,15 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  buildTranscript,
+  segmentTurnParts,
+  transcriptItemIsVisible,
+  transcriptToolCount,
+  type AgentSessionEvent,
+  type TranscriptPart,
+  type TranscriptTurn,
+} from "@/message-flow"
 
 const relayOrigin =
   import.meta.env.VITE_RELAY_ORIGIN ?? "https://relay.silvermoon.work"
@@ -126,17 +137,6 @@ interface AgentSession {
   updatedAt: string
   lastActivityAt: string
   lastMessagePreview: string | null
-}
-
-interface AgentSessionEvent {
-  id: string
-  sessionId: string
-  sequence: number
-  type: "message" | "activity" | "tool" | "status" | "error"
-  role: "user" | "assistant" | "system" | null
-  text: string | null
-  data: Record<string, unknown> | null
-  createdAt: string
 }
 
 interface CommandResponse {
@@ -249,6 +249,239 @@ function eventBody(event: AgentSessionEvent): string {
   if (event.text) return event.text
   if (event.data) return JSON.stringify(event.data, null, 2)
   return "No additional details."
+}
+
+function MarkdownBody({ children }: { children: string }) {
+  return (
+    <div className="message-markdown">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+    </div>
+  )
+}
+
+function toolStateLabel(part: TranscriptPart): string {
+  switch (part.event.data?.state) {
+    case "started":
+    case "running":
+      return "Running"
+    case "waiting":
+      return "Waiting"
+    case "succeeded":
+      return "Succeeded"
+    case "failed":
+      return "Failed"
+    case "cancelled":
+      return "Cancelled"
+    default:
+      return "Updated"
+  }
+}
+
+function ToolStateIcon({ part }: { part: TranscriptPart }) {
+  const state = part.event.data?.state
+  if (state === "succeeded") return <Check aria-hidden="true" />
+  if (state === "failed" || state === "cancelled") {
+    return <CircleAlert aria-hidden="true" />
+  }
+  return <LoaderCircle className="animate-spin" aria-hidden="true" />
+}
+
+function ToolDisclosure({ part }: { part: TranscriptPart }) {
+  const state = part.event.data?.state
+  const name = typeof part.event.data?.toolName === "string"
+    ? part.event.data.toolName
+    : "Tool"
+  const [open, setOpen] = useState(state !== "succeeded")
+  return (
+    <details
+      className="turn-tool"
+      data-state={state ?? "updated"}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>
+        <span className="turn-tool-state">
+          <ToolStateIcon part={part} />
+        </span>
+        <strong>{name}</strong>
+        <span>{toolStateLabel(part)}</span>
+      </summary>
+      <div className="turn-tool-detail">
+        <p>{eventBody(part.event)}</p>
+      </div>
+    </details>
+  )
+}
+
+function ToolGroup({ parts }: { parts: TranscriptPart[] }) {
+  const failed = parts.some((part) =>
+    part.event.data?.state === "failed"
+    || part.event.data?.state === "cancelled"
+  )
+  const active = parts.some((part) =>
+    part.event.data?.state === "started"
+    || part.event.data?.state === "running"
+    || part.event.data?.state === "waiting"
+  )
+  const summary = failed
+    ? "Needs attention"
+    : active
+    ? "In progress"
+    : "Completed"
+
+  return (
+    <section
+      className="turn-tool-group"
+      aria-label={`Tool activity, ${parts.length} ${
+        parts.length === 1 ? "step" : "steps"
+      }, ${summary.toLowerCase()}`}
+    >
+      <header>
+        <span>
+          <Wrench aria-hidden="true" />
+          Tool activity · {parts.length}
+        </span>
+        <strong data-state={failed ? "failed" : active ? "running" : "succeeded"}>
+          {summary}
+        </strong>
+      </header>
+      {parts.map((part) => (
+        <ToolDisclosure
+          key={`${part.id}:${part.event.data?.state ?? "updated"}`}
+          part={part}
+        />
+      ))}
+    </section>
+  )
+}
+
+function StructuredPart({ part }: { part: TranscriptPart }) {
+  const body = eventBody(part.event)
+  if (part.kind === "markdown") {
+    return (
+      <article
+        className="turn-markdown"
+        aria-label={`Copilot message sent ${formatTime(part.event.createdAt)}`}
+      >
+        <MarkdownBody>{body}</MarkdownBody>
+      </article>
+    )
+  }
+  if (part.kind === "system") {
+    return (
+      <div className="turn-system" aria-label="System notification">
+        <strong>System</strong>
+        <p>{body}</p>
+      </div>
+    )
+  }
+  if (part.kind === "error") {
+    return (
+      <div className="turn-error" aria-label="Agent error">
+        <CircleAlert aria-hidden="true" />
+        <div>
+          <strong>Error</strong>
+          <p>{body}</p>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="turn-activity">
+      <span aria-hidden="true" />
+      <div>
+        <strong>Activity</strong>
+        <p>{body}</p>
+      </div>
+      <time dateTime={part.event.createdAt}>
+        {formatRelativeTime(part.event.createdAt)}
+      </time>
+    </div>
+  )
+}
+
+function TranscriptTurnView({
+  turn,
+  showTools,
+}: {
+  turn: TranscriptTurn
+  showTools: boolean
+}) {
+  const segments = segmentTurnParts(turn.parts)
+  const lastEvent = turn.parts.at(-1)?.event ?? turn.request
+  return (
+    <article
+      className="transcript-turn"
+      aria-label={`Agent turn started ${formatTime(turn.createdAt)}`}
+    >
+      {turn.request?.text && (
+        <div
+          className={`turn-request ${
+            turn.request.role === "user" ? "is-user" : "is-system"
+          }`}
+          aria-label={`${eventLabel(turn.request)} message sent ${
+            formatTime(turn.request.createdAt)
+          }`}
+        >
+          <p>{turn.request.text}</p>
+        </div>
+      )}
+      <div className="turn-response">
+        <strong className="turn-response-label">Copilot</strong>
+        {segments.map((segment, index) =>
+          segment.kind === "tools"
+            ? showTools && (
+                <ToolGroup
+                  key={`tools:${segment.parts[0]?.id ?? index}`}
+                  parts={segment.parts}
+                />
+              )
+            : (
+                <StructuredPart
+                  key={`${segment.part.kind}:${segment.part.id}`}
+                  part={segment.part}
+                />
+              )
+        )}
+      </div>
+      {lastEvent && (
+        <time className="turn-time" dateTime={lastEvent.createdAt}>
+          {formatTime(lastEvent.createdAt)}
+        </time>
+      )}
+    </article>
+  )
+}
+
+function LegacyEventView({ event }: { event: AgentSessionEvent }) {
+  return event.type === "message"
+    ? (
+        <article
+          className={`conversation-message message-${event.role ?? "system"}`}
+          aria-label={`${eventLabel(event)} message sent ${
+            formatTime(event.createdAt)
+          }`}
+        >
+          {event.role === "assistant"
+            ? <MarkdownBody>{eventBody(event)}</MarkdownBody>
+            : <p>{eventBody(event)}</p>}
+          <time className="message-time" dateTime={event.createdAt}>
+            {formatTime(event.createdAt)}
+          </time>
+        </article>
+      )
+    : (
+        <div className="activity-event" data-type={event.type}>
+          <span className="activity-event-marker" aria-hidden="true" />
+          <div>
+            <strong>{eventLabel(event)}</strong>
+            <pre>{eventBody(event)}</pre>
+          </div>
+          <time dateTime={event.createdAt}>
+            {formatRelativeTime(event.createdAt)}
+          </time>
+        </div>
+      )
 }
 
 function initials(value: string | null): string {
@@ -547,16 +780,20 @@ function App() {
       ) ?? null,
     [agentSessions, selectedConnectorId, selectedSessionId],
   )
-  const toolEventCount = useMemo(
-    () => events.filter((event) => event.type === "tool").length,
+  const transcriptItems = useMemo(
+    () => buildTranscript(events),
     [events],
   )
-  const visibleEvents = useMemo(
+  const toolEventCount = useMemo(
+    () => transcriptToolCount(transcriptItems),
+    [transcriptItems],
+  )
+  const visibleTranscriptItems = useMemo(
     () =>
-      showToolEvents
-        ? events
-        : events.filter((event) => event.type !== "tool"),
-    [events, showToolEvents],
+      transcriptItems.filter((item) =>
+        transcriptItemIsVisible(item, showToolEvents)
+      ),
+    [showToolEvents, transcriptItems],
   )
   const toolEventToggleLabel = showToolEvents
     ? "Hide tool messages"
@@ -1321,7 +1558,8 @@ function App() {
                         </div>
                       )}
 
-                      {events.length > 0 && visibleEvents.length === 0 && (
+                      {events.length > 0
+                        && visibleTranscriptItems.length === 0 && (
                         <div
                           className="transcript-empty transcript-empty-filtered"
                           role="status"
@@ -1335,41 +1573,20 @@ function App() {
                         </div>
                       )}
 
-                      {visibleEvents.map((event) =>
-                        event.type === "message"
+                      {visibleTranscriptItems.map((item) =>
+                        item.kind === "turn"
                           ? (
-                              <article
-                                key={event.id}
-                                className={`conversation-message message-${event.role ?? "system"}`}
-                                aria-label={`${eventLabel(event)} message sent ${formatTime(event.createdAt)}`}
-                              >
-                                <p>{eventBody(event)}</p>
-                                <time
-                                  className="message-time"
-                                  dateTime={event.createdAt}
-                                >
-                                  {formatTime(event.createdAt)}
-                                </time>
-                              </article>
+                              <TranscriptTurnView
+                                key={`turn:${item.id}`}
+                                turn={item}
+                                showTools={showToolEvents}
+                              />
                             )
                           : (
-                              <div
-                                key={event.id}
-                                className="activity-event"
-                                data-type={event.type}
-                              >
-                                <span
-                                  className="activity-event-marker"
-                                  aria-hidden="true"
-                                />
-                                <div>
-                                  <strong>{eventLabel(event)}</strong>
-                                  <pre>{eventBody(event)}</pre>
-                                </div>
-                                <time dateTime={event.createdAt}>
-                                  {formatRelativeTime(event.createdAt)}
-                                </time>
-                              </div>
+                              <LegacyEventView
+                                key={`event:${item.event.id}`}
+                                event={item.event}
+                              />
                             )
                       )}
                     </div>

@@ -62,6 +62,43 @@ describe("relay protocol", () => {
         createdAt: "2026-10-10T00:00:00.000Z",
       }).success,
     ).toBe(true);
+    expect(
+      agentSessionEventSchema.safeParse({
+        id: "event-2",
+        sessionId: "session-1",
+        sequence: 2,
+        type: "tool",
+        text: "Tests succeeded",
+        data: {
+          turnId: "turn-1",
+          partId: "tool-1",
+          partIndex: 2,
+          partKind: "tool",
+          update: "snapshot",
+          toolName: "Run tests",
+          toolCallId: "tool-1",
+          state: "succeeded",
+        },
+        createdAt: "2026-10-10T00:00:01.000Z",
+      }).success,
+    ).toBe(true);
+    expect(
+      agentSessionEventSchema.safeParse({
+        id: "event-3",
+        sessionId: "session-1",
+        sequence: 3,
+        type: "message",
+        role: "assistant",
+        text: "Done.",
+        data: {
+          turnId: "turn-1",
+          partId: "part-1",
+          partIndex: -1,
+          partKind: "markdown",
+        },
+        createdAt: "2026-10-10T00:00:02.000Z",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects unsupported versions and invalid connector identities", () => {

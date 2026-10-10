@@ -9,6 +9,8 @@ import {
   PendingMessageKind,
   ResponsePartKind,
   SessionStatus,
+  ToolCallConfirmationReason,
+  ToolCallStatus,
   TurnState,
   type ChatState,
   type SessionSummary,
@@ -103,9 +105,15 @@ describe("VS Code Agent Host mapping", () => {
         text: "What changed?",
       }),
       expect.objectContaining({
-        id: "ahp:turn-1:assistant",
+        id: "ahp:turn-1:part:part-1",
         role: "assistant",
         text: "The connector changed.",
+        data: expect.objectContaining({
+          turnId: "turn-1",
+          partId: "part-1",
+          partIndex: 0,
+          partKind: "markdown",
+        }),
       }),
       expect.objectContaining({
         id: "ahp:turn-2:user",
@@ -117,6 +125,115 @@ describe("VS Code Agent Host mapping", () => {
       (event, index) =>
         index === 0 || events[index - 1].sequence < event.sequence,
     )).toBe(true);
+  });
+
+  it("preserves interleaved response-part order and tool identity", () => {
+    const base = chatState();
+    const turn = base.turns[0];
+    const events = agentHostChatHistoryToEvents("session-1", {
+      ...base,
+      turns: [{
+        ...turn,
+        responseParts: [{
+          kind: ResponsePartKind.Markdown,
+          id: "markdown-intro",
+          content: "I will inspect the connector.",
+        }, {
+          kind: ResponsePartKind.ToolCall,
+          toolCall: {
+            status: ToolCallStatus.Completed,
+            toolCallId: "tool-1",
+            toolName: "read_file",
+            displayName: "Read file",
+            invocationMessage: "Reading connector.ts",
+            confirmed: ToolCallConfirmationReason.NotNeeded,
+            success: true,
+            pastTenseMessage: "Read connector.ts",
+          },
+        }, {
+          kind: ResponsePartKind.ToolCall,
+          toolCall: {
+            status: ToolCallStatus.PendingConfirmation,
+            toolCallId: "tool-2",
+            toolName: "run_terminal",
+            displayName: "Run terminal",
+            invocationMessage: "Run focused checks",
+          },
+        }, {
+          kind: ResponsePartKind.Markdown,
+          id: "markdown-result",
+          content: "The connector is ready.",
+        }, {
+          kind: ResponsePartKind.SystemNotification,
+          content: "Background verification completed.",
+        }],
+      }],
+    });
+
+    expect(events.map((event) => ({
+      role: event.role,
+      type: event.type,
+      text: event.text,
+      partId: event.data?.partId,
+      partIndex: event.data?.partIndex,
+      partKind: event.data?.partKind,
+      state: event.data?.state,
+    }))).toEqual([
+      {
+        role: "user",
+        type: "message",
+        text: "What changed?",
+        partId: "request",
+        partIndex: 0,
+        partKind: "request",
+        state: undefined,
+      },
+      {
+        role: "assistant",
+        type: "message",
+        text: "I will inspect the connector.",
+        partId: "markdown-intro",
+        partIndex: 0,
+        partKind: "markdown",
+        state: undefined,
+      },
+      {
+        role: undefined,
+        type: "tool",
+        text: "Read connector.ts",
+        partId: "tool-1",
+        partIndex: 1,
+        partKind: "tool",
+        state: "succeeded",
+      },
+      {
+        role: undefined,
+        type: "tool",
+        text: "Run terminal waiting",
+        partId: "tool-2",
+        partIndex: 2,
+        partKind: "tool",
+        state: "waiting",
+      },
+      {
+        role: "assistant",
+        type: "message",
+        text: "The connector is ready.",
+        partId: "markdown-result",
+        partIndex: 3,
+        partKind: "markdown",
+        state: undefined,
+      },
+      {
+        role: "system",
+        type: "message",
+        text: "Background verification completed.",
+        partId: "systemNotification:4",
+        partIndex: 4,
+        partKind: "system",
+        state: undefined,
+      },
+    ]);
   });
 
   it("starts idle chats and queues messages behind active turns", () => {

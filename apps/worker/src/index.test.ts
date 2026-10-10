@@ -699,6 +699,13 @@ describe("relay identity and token service", () => {
         type: "message",
         role: "assistant",
         text: "Loaded from local history.",
+        data: {
+          turnId: "turn-history-1",
+          partId: "markdown-1",
+          partIndex: 0,
+          partKind: "markdown",
+          update: "snapshot",
+        },
         createdAt: now,
       }],
     });
@@ -717,7 +724,16 @@ describe("relay identity and token service", () => {
     ).toMatchObject({
       events: [
         expect.objectContaining({ id: "history-event-1" }),
-        expect.objectContaining({ id: "history-event-2" }),
+        expect.objectContaining({
+          id: "history-event-2",
+          data: {
+            turnId: "turn-history-1",
+            partId: "markdown-1",
+            partIndex: 0,
+            partKind: "markdown",
+            update: "snapshot",
+          },
+        }),
       ],
     });
     const currentHistorySync = await SELF.fetch(

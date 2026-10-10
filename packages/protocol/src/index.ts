@@ -46,6 +46,35 @@ export const agentSessionSchema = z.object({
   lastMessagePreview: z.string().max(512).nullable().default(null),
 });
 
+export const agentSessionEventPartKindSchema = z.enum([
+  "request",
+  "markdown",
+  "tool",
+  "system",
+  "activity",
+  "error",
+]);
+
+export const agentSessionToolStateSchema = z.enum([
+  "started",
+  "running",
+  "waiting",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
+
+export const agentSessionEventDataSchema = z.object({
+  turnId: z.string().trim().min(1).max(256).optional(),
+  partId: z.string().trim().min(1).max(256).optional(),
+  partIndex: z.number().int().nonnegative().optional(),
+  partKind: agentSessionEventPartKindSchema.optional(),
+  update: z.literal("snapshot").optional(),
+  toolName: z.string().trim().min(1).max(512).optional(),
+  toolCallId: z.string().trim().min(1).max(256).optional(),
+  state: agentSessionToolStateSchema.optional(),
+}).catchall(z.unknown());
+
 export const agentSessionEventSchema = z.object({
   id: eventIdSchema,
   sessionId: sessionIdSchema,
@@ -54,7 +83,7 @@ export const agentSessionEventSchema = z.object({
   role: z.enum(["user", "assistant", "system"]).optional(),
   text: z.string().max(65_536).optional(),
   status: sessionStatusSchema.optional(),
-  data: z.record(z.string(), z.unknown()).optional(),
+  data: agentSessionEventDataSchema.optional(),
   createdAt: timestampSchema,
 });
 
@@ -96,6 +125,9 @@ export type SessionStatus = z.infer<typeof sessionStatusSchema>;
 export type ConnectorCapabilities = z.infer<typeof connectorCapabilitiesSchema>;
 export type AgentDescriptor = z.infer<typeof agentDescriptorSchema>;
 export type AgentSession = z.infer<typeof agentSessionSchema>;
+export type AgentSessionEventData = z.infer<
+  typeof agentSessionEventDataSchema
+>;
 export type AgentSessionEvent = z.infer<typeof agentSessionEventSchema>;
 export type ConnectorCommand = z.infer<typeof connectorCommandSchema>;
 
