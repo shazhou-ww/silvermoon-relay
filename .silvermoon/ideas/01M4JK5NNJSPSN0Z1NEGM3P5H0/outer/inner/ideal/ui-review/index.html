@@ -170,8 +170,8 @@
   <a class="skip-link" href="#review">跳到评审内容</a>
   <header>
     <div>
-      <h1>subsession 列表完整性</h1>
-      <p>用同一 Device、同一批会话数据对比当前缺失状态与修复后的扁平 Session 列表，不改变既有视觉层级。</p>
+      <h1>subsession 父子上下文</h1>
+      <p>用同一 Device、同一批会话数据对比当前缺失状态与修复后的一级缩进，让父子任务关系在现有 Session 列表中可见。</p>
     </div>
     <span class="status">说明性评审材料</span>
   </header>
@@ -180,12 +180,12 @@
     <section class="decision" aria-labelledby="decision-title">
       <div>
         <p class="eyebrow">待决定</p>
-        <h2 id="decision-title">是否批准让可用 subsession 与顶层 Session 一起出现在现有列表中？</h2>
+        <h2 id="decision-title">是否批准让 subsession 紧跟父 Session 并缩进一级显示？</h2>
       </div>
       <ul class="deltas" aria-label="关键变化">
         <li>列表从 2 项补全为 3 项</li>
-        <li>subsession 沿用现有列表行</li>
-        <li>不增加树形导航</li>
+        <li>subsession 跟随父项缩进</li>
+        <li>不增加折叠树控件</li>
       </ul>
     </section>
 
@@ -199,12 +199,12 @@
     </div>
 
     <section class="review-end" aria-label="评审结论">
-      <p>本材料仅用于说明缺陷与预期结果，不是生产 UI 或规范性行为契约。<a href="../Idea.md">查看规范方向卡</a></p>
-      <strong>是否批准以扁平列表补全 subsession 的方向？</strong>
+      <p>本材料仅用于说明缺陷与预期结果，不是生产 UI 或规范性行为契约。<a href="../Idea.md">查看规范方向卡</a> · <a href="../Business-Data-Model-Review.md">查看父子关系模型</a></p>
+      <strong>是否批准在现有列表内缩进 subsession 的方向？</strong>
     </section>
   </main>
 
-  <footer>未决风险：实际遗漏点仍需在 Connector 的 SDK 与 Agent Host 会话来源中确认；方向不依赖新增父子关系字段。</footer>
+  <footer>未决风险：AHP SessionSummary 不提供通用父级字段；实施必须从权威会话来源取得关系，无法确认时保持该 Session 顶层可见。</footer>
 
   <script>
     const frame = document.querySelector("#scenario-frame");

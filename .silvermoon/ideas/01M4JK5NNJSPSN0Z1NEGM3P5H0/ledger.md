@@ -4,15 +4,15 @@
 
 ### Implementation steps
 
-- [ ] **I-S01:** 补齐 subsession 发现
-- [ ] **I-S02:** 保持同步链路完整
-- [ ] **I-S03:** 建立回归覆盖
+- [ ] **I-S01:** 补齐 subsession 与父级发现
+- [ ] **I-S02:** 贯通可选父级关系
+- [ ] **I-S03:** 构建缩进列表与回归
 
 ### Implementation acceptance criteria
 
-- [ ] **I-AC01:** Connector 返回完整会话集合
-- [ ] **I-AC02:** Relay 同步无丢失或重复
-- [ ] **I-AC03:** Web 列表可操作 subsession
+- [ ] **I-AC01:** Connector 返回父子会话集合
+- [ ] **I-AC02:** Relay 保留安全父级关系
+- [ ] **I-AC03:** Web 缩进项保持可操作
 
 ## Deployment
 
@@ -23,5 +23,5 @@
 
 ### Deployment acceptance criteria
 
-- [ ] **D-AC01:** subsession 在目标环境可见
+- [ ] **D-AC01:** subsession 在父 Session 下可见
 - [ ] **D-AC02:** 列表稳定且兼容
