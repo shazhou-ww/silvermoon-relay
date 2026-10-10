@@ -4,6 +4,7 @@ import type {
   SessionEvent,
   SessionMetadata,
 } from "@github/copilot-sdk";
+import { agentSessionSchema } from "@silvermoon-relay/protocol";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentAdapterEvent } from "./adapter.js";
 import { CopilotAgentAdapter } from "./copilot-adapter.js";
@@ -46,13 +47,22 @@ class FakeClient {
   }
 
   async listSessions(): Promise<SessionMetadata[]> {
-    return [{
-      sessionId: "session-existing",
-      startTime: new Date("2026-10-10T00:00:00.000Z"),
-      modifiedTime: new Date("2026-10-10T00:01:00.000Z"),
-      summary: "Existing work",
-      isRemote: false,
-    }];
+    return [
+      {
+        sessionId: "session-existing",
+        startTime: new Date("2026-10-10T00:00:00.000Z"),
+        modifiedTime: new Date("2026-10-10T00:01:00.000Z"),
+        summary: "Existing work",
+        isRemote: false,
+      },
+      {
+        sessionId: "session-long-summary",
+        startTime: new Date("2026-10-10T00:00:00.000Z"),
+        modifiedTime: new Date("2026-10-10T00:01:00.000Z"),
+        summary: "x".repeat(600),
+        isRemote: false,
+      },
+    ];
   }
 
   async createSession(_config: SessionConfig): Promise<FakeSession> {
@@ -80,6 +90,13 @@ describe("CopilotAgentAdapter", () => {
         title: "Existing work",
       }),
     );
+    const sessions = await adapter.listSessions();
+    expect(() => agentSessionSchema.array().parse(sessions)).not.toThrow();
+    expect(sessions.find((session) => session.id === "session-long-summary"))
+      .toMatchObject({
+        title: "x".repeat(256),
+        lastMessagePreview: "x".repeat(512),
+      });
     const created = await adapter.createSession({
       title: "Investigate CI",
       prompt: "Fix the failing check.",
@@ -118,6 +135,13 @@ describe("CopilotAgentAdapter", () => {
         toolCallId: "tool-call-1",
       },
     } as SessionEvent);
+    client.session.emit({
+      id: "event-4",
+      parentId: "event-3",
+      timestamp: "2026-10-10T00:02:02.000Z",
+      type: "session.title_changed",
+      data: { title: "y".repeat(600) },
+    } as SessionEvent);
     await vi.waitFor(() => {
       expect(events).toContainEqual(expect.objectContaining({
         type: "session.event",
@@ -131,6 +155,12 @@ describe("CopilotAgentAdapter", () => {
         event: expect.objectContaining({
           id: "event-3",
           text: "powershell succeeded",
+        }),
+      }));
+      expect(events).toContainEqual(expect.objectContaining({
+        type: "session.updated",
+        session: expect.objectContaining({
+          title: "y".repeat(256),
         }),
       }));
     });
