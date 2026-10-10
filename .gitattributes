@@ -1,2 +1,2 @@
-**/events/*.jsonl -text -filter
+**/events.jsonl -text -filter
 apps/worker/worker-configuration.d.ts whitespace=-blank-at-eol

@@ -80,6 +80,64 @@ async function createSchema(): Promise<void> {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (user_id, connection_token_id, daemon_id)
     )`,
+    `CREATE TABLE connectors (
+      user_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      agent_name TEXT,
+      agent_version TEXT,
+      capabilities_json TEXT NOT NULL DEFAULT
+        '{"listSessions":false,"createSession":false,"sendMessage":false,"streamEvents":false}',
+      status TEXT NOT NULL DEFAULT 'offline',
+      connection_token_id TEXT,
+      connected_at TEXT,
+      disconnected_at TEXT,
+      last_seen_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, id)
+    )`,
+    `CREATE TABLE agent_sessions (
+      user_id TEXT NOT NULL,
+      connector_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      title TEXT,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_activity_at TEXT NOT NULL,
+      last_message_preview TEXT,
+      PRIMARY KEY (user_id, connector_id, id)
+    )`,
+    `CREATE TABLE agent_session_events (
+      user_id TEXT NOT NULL,
+      connector_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      role TEXT,
+      content TEXT,
+      data_json TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, connector_id, session_id, event_id),
+      UNIQUE (user_id, connector_id, session_id, sequence)
+    )`,
+    `CREATE TABLE connector_commands (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      connector_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      session_id TEXT,
+      payload_json TEXT NOT NULL,
+      status TEXT NOT NULL,
+      error_code TEXT,
+      error_message TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      sent_at TEXT,
+      accepted_at TEXT,
+      completed_at TEXT
+    )`,
   ];
   for (const statement of statements) {
     await env.DB.prepare(statement).run();
@@ -262,7 +320,7 @@ describe("relay identity and token service", () => {
           upgrade: "websocket",
           "sec-websocket-version": "13",
           "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
-          "x-silvermoon-daemon-id": "daemon-01",
+          "x-silvermoon-daemon-id": "daemon-02",
         },
       },
     );
@@ -307,7 +365,7 @@ describe("relay identity and token service", () => {
           upgrade: "websocket",
           "sec-websocket-version": "13",
           "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
-          "x-silvermoon-daemon-id": "daemon-02",
+          "x-silvermoon-daemon-id": "daemon-03",
         },
       },
     );
@@ -315,13 +373,20 @@ describe("relay identity and token service", () => {
 
     const acknowledged = new Promise<MessageEvent>((resolve) => {
       otherSocket.addEventListener("message", (event) => {
-        if (JSON.parse(String(event.data)).type === "ready.ack") resolve(event);
+        const frame = JSON.parse(String(event.data)) as {
+          id?: number;
+          result?: { type?: string };
+        };
+        if (frame.id === 1 && frame.result?.type === "data") resolve(event);
       });
     });
     otherSocket.send(JSON.stringify({
-      type: "ready",
-      protocolVersion: 1,
-      daemonId: "daemon-01",
+      id: 1,
+      method: "mutation",
+      params: {
+        path: "heartbeat",
+        input: { observedAt: new Date().toISOString() },
+      },
     }));
     await expect(acknowledged).resolves.toBeDefined();
     otherSocket.close(1000, "test complete");
@@ -450,5 +515,205 @@ describe("relay identity and token service", () => {
       rotatingEnv,
     );
     expect(authenticated).toMatchObject({ userId: "user-01" });
+  });
+
+  it("routes session commands through an online connector and stores activity", async () => {
+    const connectorToken = await createToken(appEnv, "user-01", {
+      label: "Studio connector",
+    });
+    const upgraded = await SELF.fetch(
+      "https://relay.silvermoon.work/v1/connectors/studio-laptop/connect",
+      {
+        headers: {
+          authorization: `Bearer ${connectorToken.token}`,
+          connection: "Upgrade",
+          upgrade: "websocket",
+          "sec-websocket-version": "13",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+      },
+    );
+    expect(upgraded.status).toBe(101);
+    const socket = upgraded.webSocket!;
+    socket.accept();
+
+    interface TrpcFrame {
+      id?: number;
+      result?: {
+        type?: string;
+        data?: unknown;
+      };
+      error?: unknown;
+    }
+    const frames: TrpcFrame[] = [];
+    socket.addEventListener("message", (event) => {
+      frames.push(JSON.parse(String(event.data)) as TrpcFrame);
+    });
+    const sendRpc = (
+      id: number,
+      method: "mutation" | "subscription",
+      path: string,
+      input: unknown,
+    ) => {
+      socket.send(JSON.stringify({
+        id,
+        method,
+        params: { path, input },
+      }));
+    };
+    const waitForData = async (
+      id: number,
+      predicate: (value: unknown) => boolean = () => true,
+    ): Promise<unknown> => {
+      let found: TrpcFrame | undefined;
+      await expect.poll(() => {
+        found = frames.find(
+          (frame) =>
+            frame.id === id
+            && frame.result?.type === "data"
+            && predicate(frame.result.data),
+        );
+        return found;
+      }).toBeDefined();
+      return found?.result?.data;
+    };
+
+    const now = new Date().toISOString();
+    sendRpc(1, "mutation", "register", {
+      connectorId: "studio-laptop",
+      displayName: "Studio laptop",
+      agent: { name: "Test agent", version: "1.0.0" },
+      capabilities: {
+        listSessions: true,
+        createSession: true,
+        sendMessage: true,
+        streamEvents: true,
+      },
+    });
+    await waitForData(1);
+    sendRpc(2, "mutation", "syncSessions", {
+      sessions: [{
+        id: "session-existing",
+        title: "Existing session",
+        status: "idle",
+        createdAt: now,
+        updatedAt: now,
+        lastMessagePreview: "Ready to continue",
+      }],
+    });
+    await waitForData(2);
+    sendRpc(3, "subscription", "commands", null);
+    await expect.poll(() =>
+      frames.some(
+        (frame) => frame.id === 3 && frame.result?.type === "started",
+      )
+    ).toBe(true);
+
+    await expect.poll(async () => {
+      const response = await SELF.fetch(
+        "https://relay.silvermoon.work/api/connectors",
+        { headers: sessionHeaders(session) },
+      );
+      const connectors = await response.json<Array<{
+        id: string;
+        status: string;
+        sessionCount: number;
+      }>>();
+      return connectors.find((item) => item.id === "studio-laptop");
+    }).toMatchObject({ status: "online", sessionCount: 1 });
+
+    const create = await SELF.fetch(
+      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions",
+      {
+        method: "POST",
+        headers: sessionHeaders(session),
+        body: JSON.stringify({
+          title: "Investigate CI",
+          prompt: "Find the failing check and fix it.",
+        }),
+      },
+    );
+    expect(create.status).toBe(202);
+    const createCommand = await waitForData(
+      3,
+      (value) =>
+        !!value
+        && typeof value === "object"
+        && "type" in value
+        && value.type === "session.create",
+    ) as Record<string, unknown>;
+    expect(createCommand).toMatchObject({
+      type: "session.create",
+      title: "Investigate CI",
+    });
+    const createCommandId = String(createCommand.commandId);
+    sendRpc(4, "mutation", "commandAccepted", {
+      commandId: createCommandId,
+    });
+    sendRpc(5, "mutation", "commandCompleted", {
+      commandId: createCommandId,
+      outcome: "succeeded",
+      session: {
+        id: "session-new",
+        title: "Investigate CI",
+        status: "running",
+        createdAt: now,
+        updatedAt: now,
+        lastMessagePreview: "Find the failing check and fix it.",
+      },
+    });
+    await waitForData(5);
+
+    await expect.poll(async () => {
+      const response = await SELF.fetch(
+        "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions",
+        { headers: sessionHeaders(session) },
+      );
+      const sessions = await response.json<Array<{ id: string }>>();
+      return sessions.some((item) => item.id === "session-new");
+    }).toBe(true);
+    const continued = await SELF.fetch(
+      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-new/messages",
+      {
+        method: "POST",
+        headers: sessionHeaders(session),
+        body: JSON.stringify({ message: "Show me the test output." }),
+      },
+    );
+    expect(continued.status).toBe(202);
+    const messageCommand = await waitForData(
+      3,
+      (value) =>
+        !!value
+        && typeof value === "object"
+        && "type" in value
+        && value.type === "session.message",
+    ) as Record<string, unknown>;
+    expect(messageCommand).toMatchObject({
+      type: "session.message",
+      sessionId: "session-new",
+      message: "Show me the test output.",
+    });
+    sendRpc(6, "mutation", "sessionEvent", {
+        id: "event-1",
+        sessionId: "session-new",
+        sequence: 1,
+        type: "message",
+        role: "assistant",
+        text: "The worker type generation check is stale.",
+        createdAt: new Date().toISOString(),
+    });
+    await waitForData(6);
+
+    await expect.poll(async () => {
+      const response = await SELF.fetch(
+        "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-new/events",
+        { headers: sessionHeaders(session) },
+      );
+      const body = await response.json<{ events: Array<{ id: string }> }>();
+      return body.events;
+    }).toContainEqual(expect.objectContaining({ id: "event-1" }));
+
+    socket.close(1000, "test complete");
   });
 });
