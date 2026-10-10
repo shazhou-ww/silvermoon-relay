@@ -65,6 +65,16 @@ class FakeClient {
       type: "session.idle",
       data: {},
     } as SessionEvent,
+    {
+      id: "history-error",
+      parentId: "history-idle",
+      timestamp: "2026-10-10T00:00:03.000Z",
+      type: "session.error",
+      data: {
+        errorType: "historical-error",
+        message: "A historical failure",
+      },
+    } as SessionEvent,
   ]);
   started = false;
 
@@ -149,6 +159,11 @@ describe("CopilotAgentAdapter", () => {
         sessionId: "session-existing",
         status: "idle",
       }),
+      expect.objectContaining({
+        id: "history-error",
+        sessionId: "session-existing",
+        type: "error",
+      }),
     ]);
     expect(
       history.every(
@@ -156,6 +171,12 @@ describe("CopilotAgentAdapter", () => {
           index === 0 || history[index - 1].sequence < event.sequence,
       ),
     ).toBe(true);
+    await expect(adapter.listSessions()).resolves.toContainEqual(
+      expect.objectContaining({
+        id: "session-existing",
+        status: "idle",
+      }),
+    );
     const created = await adapter.createSession({
       title: "Investigate CI",
       prompt: "Fix the failing check.",

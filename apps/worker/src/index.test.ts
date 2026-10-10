@@ -734,6 +734,13 @@ describe("relay identity and token service", () => {
     });
     expect(
       await env.DB.prepare(
+        `SELECT status FROM agent_sessions
+         WHERE user_id = 'user-01' AND connector_id = 'studio-laptop'
+           AND id = 'session-existing'`,
+      ).first<{ status: string }>(),
+    ).toMatchObject({ status: "idle" });
+    expect(
+      await env.DB.prepare(
         `SELECT COUNT(*) AS count FROM connector_commands
          WHERE user_id = 'user-01' AND connector_id = 'studio-laptop'
            AND session_id = 'session-existing' AND type = 'session.history'`,

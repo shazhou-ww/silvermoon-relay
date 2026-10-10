@@ -288,14 +288,7 @@ export class ConnectorSession extends DurableObject<Env> {
     attachment: ConnectionAttachment,
     event: AgentSessionEvent,
   ): Promise<void> {
-    await this.storeEvents(attachment, [event]);
-  }
-
-  private async storeEvents(
-    attachment: ConnectionAttachment,
-    events: AgentSessionEvent[],
-  ): Promise<void> {
-    await this.env.DB.batch(events.flatMap((event) => [
+    await this.env.DB.batch([
       this.env.DB.prepare(
         `INSERT INTO agent_sessions
           (user_id, connector_id, id, title, status, created_at, updated_at,
@@ -315,26 +308,42 @@ export class ConnectorSession extends DurableObject<Env> {
         eventPreview(event),
         event.status ?? null,
       ),
-      this.env.DB.prepare(
-        `INSERT INTO agent_session_events
-          (user_id, connector_id, session_id, event_id, sequence, type, role,
-           content, data_json, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-         ON CONFLICT (user_id, connector_id, session_id, event_id)
-         DO NOTHING`,
-      ).bind(
-        attachment.userId,
-        attachment.connectorId,
-        event.sessionId,
-        event.id,
-        event.sequence,
-        event.type,
-        event.role ?? null,
-        event.text ?? null,
-        event.data ? JSON.stringify(event.data) : null,
-        event.createdAt,
-      ),
-    ]));
+      this.eventInsert(attachment, event),
+    ]);
+  }
+
+  private async storeEvents(
+    attachment: ConnectionAttachment,
+    events: AgentSessionEvent[],
+  ): Promise<void> {
+    await this.env.DB.batch(
+      events.map((event) => this.eventInsert(attachment, event)),
+    );
+  }
+
+  private eventInsert(
+    attachment: ConnectionAttachment,
+    event: AgentSessionEvent,
+  ) {
+    return this.env.DB.prepare(
+      `INSERT INTO agent_session_events
+        (user_id, connector_id, session_id, event_id, sequence, type, role,
+         content, data_json, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+       ON CONFLICT (user_id, connector_id, session_id, event_id)
+       DO NOTHING`,
+    ).bind(
+      attachment.userId,
+      attachment.connectorId,
+      event.sessionId,
+      event.id,
+      event.sequence,
+      event.type,
+      event.role ?? null,
+      event.text ?? null,
+      event.data ? JSON.stringify(event.data) : null,
+      event.createdAt,
+    );
   }
 
   private async completeCommand(
