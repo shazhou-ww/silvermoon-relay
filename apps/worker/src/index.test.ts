@@ -106,6 +106,8 @@ async function createSchema(): Promise<void> {
       updated_at TEXT NOT NULL,
       last_activity_at TEXT NOT NULL,
       last_message_preview TEXT,
+      parent_session_id TEXT,
+      can_send_message INTEGER NOT NULL DEFAULT 1,
       PRIMARY KEY (user_id, connector_id, id)
     )`,
     `CREATE TABLE agent_session_events (
@@ -612,6 +614,15 @@ describe("relay identity and token service", () => {
     });
     sendRpc(2, "mutation", "syncSessions", {
       sessions: [{
+        id: "session-child",
+        parentSessionId: "session-existing",
+        title: "Read-only child",
+        status: "running",
+        createdAt: now,
+        updatedAt: now,
+        lastMessagePreview: null,
+        canSendMessage: false,
+      }, {
         id: "session-existing",
         title: "Existing session",
         status: "idle",
@@ -639,7 +650,29 @@ describe("relay identity and token service", () => {
         sessionCount: number;
       }>>();
       return connectors.find((item) => item.id === "studio-laptop");
-    }).toMatchObject({ status: "online", sessionCount: 1 });
+    }).toMatchObject({ status: "online", sessionCount: 2 });
+
+    const sessionList = await SELF.fetch(
+      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions",
+      { headers: sessionHeaders(session) },
+    );
+    expect(await sessionList.json()).toContainEqual(expect.objectContaining({
+      id: "session-child",
+      parentSessionId: "session-existing",
+      canSendMessage: false,
+    }));
+    const readOnlyMessage = await SELF.fetch(
+      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-child/messages",
+      {
+        method: "POST",
+        headers: sessionHeaders(session),
+        body: JSON.stringify({ message: "Can I change this?" }),
+      },
+    );
+    expect(readOnlyMessage.status).toBe(409);
+    expect(await readOnlyMessage.json()).toEqual({
+      error: "session-read-only",
+    });
 
     const historySync = await SELF.fetch(
       "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-existing/events/sync",
@@ -699,6 +732,13 @@ describe("relay identity and token service", () => {
         type: "message",
         role: "assistant",
         text: "Loaded from local history.",
+        data: {
+          turnId: "turn-history-1",
+          partId: "markdown-1",
+          partIndex: 0,
+          partKind: "markdown",
+          update: "snapshot",
+        },
         createdAt: now,
       }],
     });
@@ -717,7 +757,16 @@ describe("relay identity and token service", () => {
     ).toMatchObject({
       events: [
         expect.objectContaining({ id: "history-event-1" }),
-        expect.objectContaining({ id: "history-event-2" }),
+        expect.objectContaining({
+          id: "history-event-2",
+          data: {
+            turnId: "turn-history-1",
+            partId: "markdown-1",
+            partIndex: 0,
+            partKind: "markdown",
+            update: "snapshot",
+          },
+        }),
       ],
     });
     const currentHistorySync = await SELF.fetch(

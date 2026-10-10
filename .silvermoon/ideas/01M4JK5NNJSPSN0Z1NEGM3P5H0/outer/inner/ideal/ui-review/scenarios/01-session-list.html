@@ -14,7 +14,6 @@
       --border: #d8dee7;
       --primary: #3454d1;
       --online: #2f9b77;
-      --highlight: #d97706;
     }
 
     * { box-sizing: border-box; }
@@ -156,7 +155,9 @@
     }
     .session-row.added {
       background: #fffaf0;
-      box-shadow: inset 3px 0 0 var(--highlight);
+    }
+    .session-row.child {
+      padding-left: 31px;
     }
     .dot {
       width: 7px;
@@ -228,8 +229,8 @@
     </div>
     <ul class="callouts" aria-label="可见变化">
       <li>缺失项恢复</li>
-      <li>计数同步更新</li>
-      <li>现有行样式不变</li>
+      <li>紧跟父项缩进一级</li>
+      <li>无需折叠控件</li>
     </ul>
   </header>
 
@@ -300,15 +301,6 @@
               <span class="filter">Needs attention</span>
             </div>
           </div>
-          <article class="session-row added">
-            <span class="dot"></span>
-            <div class="row-main">
-              <span class="row-title">补充 API 边界测试</span>
-              <span class="row-meta">▣ Studio laptop · running</span>
-              <p class="row-preview">检查错误状态与分页边界</p>
-            </div>
-            <time>now</time>
-          </article>
           <article class="session-row">
             <span class="dot"></span>
             <div class="row-main">
@@ -317,6 +309,15 @@
               <p class="row-preview">完善令牌轮换与撤销流程</p>
             </div>
             <time>8m</time>
+          </article>
+          <article class="session-row child added">
+            <span class="dot"></span>
+            <div class="row-main">
+              <span class="row-title">补充 API 边界测试</span>
+              <span class="row-meta">▣ Studio laptop · running</span>
+              <p class="row-preview">检查错误状态与分页边界</p>
+            </div>
+            <time>now</time>
           </article>
           <article class="session-row">
             <span class="dot idle"></span>

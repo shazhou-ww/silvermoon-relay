@@ -5,10 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   ActionType,
+  ChatInteractivity,
   MessageKind,
   PendingMessageKind,
   ResponsePartKind,
   SessionStatus,
+  ToolCallConfirmationReason,
+  ToolCallStatus,
   TurnState,
   type ChatState,
   type SessionSummary,
@@ -17,6 +20,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentHostChatHistoryToEvents,
   agentHostSummaryToSession,
+  agentHostSummaryToSubsessions,
   createAgentHostMessageAction,
   discoverAgentHostEndpoints,
   resolveVsCodeUserDataDirectory,
@@ -82,16 +86,90 @@ describe("VS Code Agent Host mapping", () => {
     };
     expect(agentHostSummaryToSession(summary)).toEqual({
       id: "session-active",
+      parentSessionId: null,
       title: "Active work",
       status: "waiting",
       createdAt: "2026-10-10T00:00:00.000Z",
       updatedAt: "2026-10-10T00:01:00.000Z",
       lastMessagePreview: "Waiting for approval",
+      canSendMessage: true,
     });
     expect(agentHostSummaryToSession({
       ...summary,
       resource: "not a resource",
     })).toBeNull();
+  });
+
+  it("maps visible non-default chats to stable subsessions", () => {
+    const summary: SessionSummary = {
+      resource: "copilotcli:/session-parent",
+      provider: "copilotcli",
+      title: "Parent work",
+      status: SessionStatus.InProgress,
+      createdAt: "2026-10-10T00:00:00.000Z",
+      modifiedAt: "2026-10-10T00:01:00.000Z",
+      defaultChat: "ahp-chat:/session-parent/default",
+      chats: [{
+        resource: "ahp-chat:/session-parent/default",
+        title: "Default",
+        status: SessionStatus.InProgress,
+      }, {
+        resource: "ahp-chat:/session-parent/worker",
+        title: "Investigate tests",
+        status: SessionStatus.InProgress,
+        interactivity: ChatInteractivity.ReadOnly,
+      }, {
+        resource: "ahp-chat:/session-parent/internal",
+        title: "Internal worker",
+        interactivity: ChatInteractivity.Hidden,
+      }, {
+        resource: "ahp-chat:/session-parent/archived",
+        title: "Archived worker",
+        status: SessionStatus.Idle | SessionStatus.IsArchived,
+      }],
+    };
+    const parent = agentHostSummaryToSession(summary);
+    expect(parent).not.toBeNull();
+
+    const subsessions = agentHostSummaryToSubsessions(summary, parent!);
+    expect(subsessions).toEqual([{
+      resource: "ahp-chat:/session-parent/worker",
+      session: {
+        id: expect.stringMatching(/^ahp-chat:[0-9a-f]{64}$/u),
+        parentSessionId: "session-parent",
+        title: "Investigate tests",
+        status: "running",
+        createdAt: "2026-10-10T00:00:00.000Z",
+        updatedAt: "2026-10-10T00:01:00.000Z",
+        lastMessagePreview: null,
+        canSendMessage: false,
+      },
+    }]);
+    expect(agentHostSummaryToSubsessions(summary, parent!)[0].session.id)
+      .toBe(subsessions[0].session.id);
+  });
+
+  it("treats the first catalog chat as the default when none is designated", () => {
+    const summary: SessionSummary = {
+      resource: "copilotcli:/session-parent",
+      provider: "copilotcli",
+      title: "Parent work",
+      status: SessionStatus.Idle,
+      createdAt: "2026-10-10T00:00:00.000Z",
+      modifiedAt: "2026-10-10T00:01:00.000Z",
+      chats: [{
+        resource: "ahp-chat:/session-parent/first",
+        title: "First",
+      }, {
+        resource: "ahp-chat:/session-parent/second",
+        title: "Second",
+      }],
+    };
+    const parent = agentHostSummaryToSession(summary);
+    expect(parent).not.toBeNull();
+    expect(agentHostSummaryToSubsessions(summary, parent!)).toHaveLength(1);
+    expect(agentHostSummaryToSubsessions(summary, parent!)[0].session.title)
+      .toBe("Second");
   });
 
   it("maps complete and active turns without exposing partial assistant text", () => {
@@ -103,9 +181,15 @@ describe("VS Code Agent Host mapping", () => {
         text: "What changed?",
       }),
       expect.objectContaining({
-        id: "ahp:turn-1:assistant",
+        id: "ahp:turn-1:part:part-1",
         role: "assistant",
         text: "The connector changed.",
+        data: expect.objectContaining({
+          turnId: "turn-1",
+          partId: "part-1",
+          partIndex: 0,
+          partKind: "markdown",
+        }),
       }),
       expect.objectContaining({
         id: "ahp:turn-2:user",
@@ -117,6 +201,115 @@ describe("VS Code Agent Host mapping", () => {
       (event, index) =>
         index === 0 || events[index - 1].sequence < event.sequence,
     )).toBe(true);
+  });
+
+  it("preserves interleaved response-part order and tool identity", () => {
+    const base = chatState();
+    const turn = base.turns[0];
+    const events = agentHostChatHistoryToEvents("session-1", {
+      ...base,
+      turns: [{
+        ...turn,
+        responseParts: [{
+          kind: ResponsePartKind.Markdown,
+          id: "markdown-intro",
+          content: "I will inspect the connector.",
+        }, {
+          kind: ResponsePartKind.ToolCall,
+          toolCall: {
+            status: ToolCallStatus.Completed,
+            toolCallId: "tool-1",
+            toolName: "read_file",
+            displayName: "Read file",
+            invocationMessage: "Reading connector.ts",
+            confirmed: ToolCallConfirmationReason.NotNeeded,
+            success: true,
+            pastTenseMessage: "Read connector.ts",
+          },
+        }, {
+          kind: ResponsePartKind.ToolCall,
+          toolCall: {
+            status: ToolCallStatus.PendingConfirmation,
+            toolCallId: "tool-2",
+            toolName: "run_terminal",
+            displayName: "Run terminal",
+            invocationMessage: "Run focused checks",
+          },
+        }, {
+          kind: ResponsePartKind.Markdown,
+          id: "markdown-result",
+          content: "The connector is ready.",
+        }, {
+          kind: ResponsePartKind.SystemNotification,
+          content: "Background verification completed.",
+        }],
+      }],
+    });
+
+    expect(events.map((event) => ({
+      role: event.role,
+      type: event.type,
+      text: event.text,
+      partId: event.data?.partId,
+      partIndex: event.data?.partIndex,
+      partKind: event.data?.partKind,
+      state: event.data?.state,
+    }))).toEqual([
+      {
+        role: "user",
+        type: "message",
+        text: "What changed?",
+        partId: "request",
+        partIndex: 0,
+        partKind: "request",
+        state: undefined,
+      },
+      {
+        role: "assistant",
+        type: "message",
+        text: "I will inspect the connector.",
+        partId: "markdown-intro",
+        partIndex: 0,
+        partKind: "markdown",
+        state: undefined,
+      },
+      {
+        role: undefined,
+        type: "tool",
+        text: "Read connector.ts",
+        partId: "tool-1",
+        partIndex: 1,
+        partKind: "tool",
+        state: "succeeded",
+      },
+      {
+        role: undefined,
+        type: "tool",
+        text: "Run terminal waiting",
+        partId: "tool-2",
+        partIndex: 2,
+        partKind: "tool",
+        state: "waiting",
+      },
+      {
+        role: "assistant",
+        type: "message",
+        text: "The connector is ready.",
+        partId: "markdown-result",
+        partIndex: 3,
+        partKind: "markdown",
+        state: undefined,
+      },
+      {
+        role: "system",
+        type: "message",
+        text: "Background verification completed.",
+        partId: "systemNotification:4",
+        partIndex: 4,
+        partKind: "system",
+        state: undefined,
+      },
+    ]);
   });
 
   it("starts idle chats and queues messages behind active turns", () => {

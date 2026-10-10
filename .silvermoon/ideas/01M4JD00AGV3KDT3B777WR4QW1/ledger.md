@@ -18,10 +18,10 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 通过现有发布路径交付 Web UI
+- [x] **D-S01:** 通过现有发布路径交付 Web UI
 - [ ] **D-S02:** 验证生产端到端旅程
 
 ### Deployment acceptance criteria
 
-- [ ] **D-AC01:** 发布质量门禁通过
+- [x] **D-AC01:** 发布质量门禁通过
 - [ ] **D-AC02:** 生产 Session 工作流可用
