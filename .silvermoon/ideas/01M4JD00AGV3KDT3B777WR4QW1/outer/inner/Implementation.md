@@ -4,7 +4,7 @@
 
 ### I-S01: 重组固定视口应用外壳
 
-移除认证后页面的居中容器与外层 Panel，把产品界面改成 `100dvh` 的两行两列网格：上排是品牌与当前 Session metadata / account controls，下排是固定密度的 Session rail 与 `minmax(0, 1fr)` 工作区。认证后的产品表面必须边到边撑满视口，不设置页面 padding、max-width、外层圆角或阴影；Session rail 与 transcript 独立滚动，composer 固定在工作区底边。Composer 的内容容器与 transcript 使用相同最大宽度和水平内边距，textarea 独占一行，下方工具栏把运行反馈放在左侧、发送按钮放在最右侧。现有居中 Shell 只继续服务 loading 与 signed-out 状态。
+移除认证后页面的居中容器与外层 Panel，把产品界面改成 `100dvh` 的两行两列网格：上排是品牌与当前 Session metadata / account controls，下排是固定密度的 Session rail 与 `minmax(0, 1fr)` 工作区。认证后的产品表面必须边到边撑满视口，不设置页面 padding、max-width、外层圆角或阴影；Session rail 与 transcript 独立滚动，composer 固定在工作区底边。Composer 的内容容器与 transcript 使用相同最大宽度和水平内边距；textarea 与下方工具栏组成一个统一边框和 focus 状态的输入 surface，工具栏把真实的 Device 目标或运行反馈放在左侧、圆形发送按钮放在最右侧，不呈现尚无能力支持的假控件。Textarea 不提供鼠标拖拽 resize handle，而是随输入内容自动增高，达到 `10rem` 上限后才在输入区内部滚动。现有居中 Shell 只继续服务 loading 与 signed-out 状态。
 
 左上区域展示 Relay mark 与产品名，右上区域展示当前 Session 标题、状态及 account trigger，左下区域承载 Session 发现和创建，右下区域承载当前 Session 的 transcript 与 composer。控件继续使用仓库中的 shadcn / Radix 组件和 Relay tokens，生产图标统一使用 Lucide，不保留文本 glyph。
 
@@ -24,7 +24,7 @@
 
 ### I-AC01: 桌面工作区占满有效视口
 
-代表性桌面视口中没有外层卡片留白或文档级横向滚动，品牌、Session metadata / account、Session list 和 Session content 四区撑满可用宽高，列表与 transcript 独立滚动且不移动应用外壳，composer 保持在内容区底部；composer 与消息流的内容宽度对齐，textarea 下方工具栏的发送按钮位于最右侧；通过浏览器截图和布局断言证明。
+代表性桌面视口中没有外层卡片留白或文档级横向滚动，品牌、Session metadata / account、Session list 和 Session content 四区撑满可用宽高，列表与 transcript 独立滚动且不移动应用外壳，composer 保持在内容区底部；composer 与消息流的内容宽度对齐，textarea 与工具栏共享完整输入边框和 focus 状态，工具栏最右侧提供发送按钮，输入内容增加和清空时 textarea 在最小高度与 `10rem` 上限之间自动调整且没有 resize handle；通过浏览器截图和布局断言证明。
 
 ### I-AC02: Session 语义与状态保持准确
 

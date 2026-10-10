@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import {
   ArrowLeft,
   Check,
@@ -316,12 +323,40 @@ function App() {
   const [trackedCommand, setTrackedCommand] =
     useState<TrackedCommand | null>(null)
   const historyRequests = useRef(new Set<string>())
+  const followUpInputRef = useRef<HTMLTextAreaElement>(null)
   const selectedConnectorId = selection?.connectorId ?? null
   const selectedSessionId = selection?.sessionId ?? null
   const connectorIdKey = useMemo(
     () => connectors.map((connector) => connector.id).sort().join("|"),
     [connectors],
   )
+
+  const resizeFollowUpInput = useCallback(() => {
+    const input = followUpInputRef.current
+    if (!input) return
+    input.style.height = "auto"
+    const contentHeight = input.scrollHeight
+    const maxHeight = Number.parseFloat(
+      window.getComputedStyle(input).maxHeight,
+    )
+    const nextHeight = Number.isFinite(maxHeight)
+      ? Math.min(contentHeight, maxHeight)
+      : contentHeight
+    input.style.height = `${nextHeight}px`
+    input.style.overflowY =
+      Number.isFinite(maxHeight) && contentHeight > maxHeight
+        ? "auto"
+        : "hidden"
+  }, [])
+
+  useLayoutEffect(() => {
+    resizeFollowUpInput()
+  }, [followUp, mobileView, resizeFollowUpInput, selectedSessionId])
+
+  useEffect(() => {
+    window.addEventListener("resize", resizeFollowUpInput)
+    return () => window.removeEventListener("resize", resizeFollowUpInput)
+  }, [resizeFollowUpInput])
 
   const refresh = useCallback(async () => {
     try {
@@ -1291,74 +1326,85 @@ function App() {
 
                   <div className="session-composer-shell">
                     <form className="session-composer" onSubmit={sendFollowUp}>
-                      <label htmlFor="session-follow-up" className="sr-only">
-                        Follow-up message
-                      </label>
-                      <Textarea
-                        id="session-follow-up"
-                        value={followUp}
-                        onChange={(event) => setFollowUp(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (
-                            event.key === "Enter"
-                            && !event.shiftKey
-                            && !event.nativeEvent.isComposing
-                          ) {
-                            event.preventDefault()
-                            event.currentTarget.form?.requestSubmit()
+                      <div className="composer-frame">
+                        <label htmlFor="session-follow-up" className="sr-only">
+                          Follow-up message
+                        </label>
+                        <Textarea
+                          ref={followUpInputRef}
+                          id="session-follow-up"
+                          value={followUp}
+                          onChange={(event) => setFollowUp(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (
+                              event.key === "Enter"
+                              && !event.shiftKey
+                              && !event.nativeEvent.isComposing
+                            ) {
+                              event.preventDefault()
+                              event.currentTarget.form?.requestSubmit()
+                            }
+                          }}
+                          placeholder={
+                            canSendFollowUp
+                              ? "Ask for the next step... Shift+Enter for a new line."
+                              : "This Session cannot receive messages right now"
                           }
-                        }}
-                        placeholder={
-                          canSendFollowUp
-                            ? "Ask for the next step... Shift+Enter for a new line."
-                            : "This Session cannot receive messages right now"
-                        }
-                        rows={2}
-                        disabled={!canSendFollowUp}
-                      />
-                      <div className="composer-toolbar">
-                        <div className="composer-status" aria-live="polite">
-                          {trackedCommand
-                            ? (
-                                <>
+                          rows={2}
+                          disabled={!canSendFollowUp}
+                        />
+                        <div className="composer-toolbar">
+                          <div className="composer-status" aria-live="polite">
+                            {trackedCommand
+                              ? (
+                                  <>
+                                    <LoaderCircle
+                                      className="animate-spin"
+                                      aria-hidden="true"
+                                    />
+                                    {trackedCommand.label}{" "}
+                                    {trackedCommand.status}
+                                  </>
+                                )
+                              : selectedConnector?.status === "offline"
+                              ? (
+                                  <>
+                                    <WifiOff aria-hidden="true" />
+                                    Reconnect {selectedConnector.displayName} to
+                                    send a follow-up.
+                                  </>
+                                )
+                              : (
+                                  <>
+                                    <Laptop aria-hidden="true" />
+                                    Send to{" "}
+                                    {selectedConnector?.displayName
+                                      ?? "current Device"}
+                                  </>
+                                )}
+                          </div>
+                          <Button
+                            type="submit"
+                            size="icon"
+                            className="composer-send"
+                            disabled={
+                              !followUp.trim()
+                              || !canSendFollowUp
+                              || busyAction === "send-message"
+                              || Boolean(trackedCommand)
+                            }
+                          >
+                            {busyAction === "send-message"
+                              ? (
                                   <LoaderCircle
                                     className="animate-spin"
                                     aria-hidden="true"
                                   />
-                                  {trackedCommand.label} {trackedCommand.status}
-                                </>
-                              )
-                            : selectedConnector?.status === "offline"
-                            ? (
-                                <>
-                                  <WifiOff aria-hidden="true" />
-                                  Reconnect {selectedConnector.displayName} to
-                                  send a follow-up.
-                                </>
-                              )
-                            : null}
+                                )
+                              : <Send aria-hidden="true" />}
+                            <span className="sr-only">Send follow-up</span>
+                          </Button>
                         </div>
-                        <Button
-                          type="submit"
-                          size="icon"
-                          className="composer-send"
-                          disabled={
-                            !followUp.trim()
-                            || !canSendFollowUp
-                            || busyAction === "send-message"
-                            || Boolean(trackedCommand)
-                          }
-                        >
-                          {busyAction === "send-message"
-                            ? (
-                                <LoaderCircle
-                                  className="animate-spin"
-                                  aria-hidden="true"
-                                />
-                              )
-                            : <Send aria-hidden="true" />}
-                          <span className="sr-only">Send follow-up</span>
-                        </Button>
                       </div>
                     </form>
                   </div>

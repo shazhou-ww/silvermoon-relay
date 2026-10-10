@@ -907,7 +907,6 @@ textarea:focus-visible {
 .session-composer {
   display: grid;
   width: min(100%, 62rem);
-  gap: 0.45rem;
   margin-inline: auto;
   padding:
     0.65rem
@@ -915,13 +914,30 @@ textarea:focus-visible {
     max(0.85rem, env(safe-area-inset-bottom));
 }
 
+.composer-frame {
+  display: grid;
+  overflow: hidden;
+  background: #f8f9fb;
+  border: 1px solid var(--input);
+  border-radius: 0.8rem;
+  box-shadow: 0 0.4rem 1.2rem rgb(20 32 51 / 6%);
+}
+
+.composer-frame:focus-within {
+  border-color: var(--ring);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent),
+    0 0.45rem 1.4rem rgb(20 32 51 / 8%);
+}
+
 .composer-toolbar {
   display: flex;
   min-width: 0;
-  min-height: 2.55rem;
+  min-height: 2.7rem;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  padding: 0.25rem 0.45rem 0.45rem 0.65rem;
 }
 
 .composer-status {
@@ -944,18 +960,24 @@ textarea:focus-visible {
   width: 100%;
   min-height: 4rem;
   max-height: 10rem;
-  padding: 0.8rem 0.9rem;
-  background: #f8f9fb;
-  border-radius: 0.8rem;
-  box-shadow: 0 0.4rem 1.2rem rgb(20 32 51 / 6%);
+  padding: 0.8rem 0.9rem 0.45rem;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   line-height: 1.45;
+  resize: none;
+}
+
+.session-composer textarea:focus-visible {
+  outline: none;
 }
 
 .composer-send {
-  width: 2.55rem;
-  height: 2.55rem;
+  width: 2.15rem;
+  height: 2.15rem;
   flex: 0 0 auto;
-  border-radius: 0.72rem;
+  border-radius: 999px;
 }
 
 .workspace-empty {
