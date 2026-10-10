@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { pathToFileURL } from "node:url";
-import { connectorIdSchema } from "@silvermoon-relay/protocol";
+import { connectorIdSchema } from "@silvermoon-ai/protocol";
 import { CopilotAgentAdapter } from "./copilot-adapter.js";
 import { SilvermoonConnector } from "./connector.js";
 

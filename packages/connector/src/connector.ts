@@ -1,6 +1,6 @@
 import { createTRPCClient, createWSClient, wsLink } from "@trpc/client";
-import type { ConnectorCommand } from "@silvermoon-relay/protocol";
-import type { ConnectorRouter } from "@silvermoon-relay/rpc";
+import type { ConnectorCommand } from "@silvermoon-ai/protocol";
+import type { ConnectorRouter } from "@silvermoon-ai/rpc";
 import WebSocket from "ws";
 import type { AgentAdapter, AgentAdapterEvent } from "./adapter.js";
 

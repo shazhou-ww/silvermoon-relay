@@ -4,15 +4,15 @@
 
 ### Implementation steps
 
-- [ ] **I-S01:** 建立 package 迁移清单
-- [ ] **I-S02:** 更新 scope 与仓库引用
-- [ ] **I-S03:** 完善发布与兼容配置
+- [x] **I-S01:** 建立 package 迁移清单
+- [x] **I-S02:** 更新 scope 与仓库引用
+- [x] **I-S03:** 完善发布与兼容配置
 
 ### Implementation acceptance criteria
 
-- [ ] **I-AC01:** scope 迁移完整
-- [ ] **I-AC02:** 仓库验证通过
-- [ ] **I-AC03:** 发布边界正确
+- [x] **I-AC01:** scope 迁移完整
+- [x] **I-AC02:** 仓库验证通过
+- [x] **I-AC03:** 发布边界正确
 
 ## Deployment
 

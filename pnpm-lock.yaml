@@ -69,10 +69,10 @@ importers:
 
   apps/worker:
     dependencies:
-      '@silvermoon-relay/protocol':
+      '@silvermoon-ai/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@silvermoon-relay/rpc':
+      '@silvermoon-ai/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
       '@trpc/server':
@@ -106,10 +106,10 @@ importers:
       '@github/copilot-sdk':
         specifier: ^1.0.19
         version: 1.0.19
-      '@silvermoon-relay/protocol':
+      '@silvermoon-ai/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@silvermoon-relay/rpc':
+      '@silvermoon-ai/rpc':
         specifier: workspace:*
         version: link:../rpc
       '@trpc/client':
@@ -147,7 +147,7 @@ importers:
 
   packages/rpc:
     dependencies:
-      '@silvermoon-relay/protocol':
+      '@silvermoon-ai/protocol':
         specifier: workspace:*
         version: link:../protocol
       '@trpc/server':

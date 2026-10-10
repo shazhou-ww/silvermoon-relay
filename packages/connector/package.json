@@ -1,7 +1,20 @@
 {
-  "name": "@silvermoon-relay/connector",
+  "name": "@silvermoon-ai/connector",
   "version": "0.1.0",
   "description": "Local agent connector for Silvermoon Relay",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shazhou-ww/silvermoon-ai.git",
+    "directory": "packages/connector"
+  },
+  "homepage": "https://github.com/shazhou-ww/silvermoon-ai/tree/main/packages/connector#readme",
+  "bugs": {
+    "url": "https://github.com/shazhou-ww/silvermoon-ai/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "bin": {
     "silvermoon-connector": "./dist/cli.js"
@@ -27,8 +40,8 @@
   },
   "dependencies": {
     "@github/copilot-sdk": "^1.0.19",
-    "@silvermoon-relay/protocol": "workspace:*",
-    "@silvermoon-relay/rpc": "workspace:*",
+    "@silvermoon-ai/protocol": "workspace:*",
+    "@silvermoon-ai/rpc": "workspace:*",
     "@trpc/client": "^11.19.0",
     "ws": "^8.18.3"
   },
