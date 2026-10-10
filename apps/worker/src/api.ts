@@ -420,15 +420,34 @@ export async function handleApi(
       );
     }
     const owned = await env.DB.prepare(
-      `SELECT 1 FROM agent_sessions
-       WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3`,
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM agent_session_events AS event
+           WHERE event.user_id = session.user_id
+             AND event.connector_id = session.connector_id
+             AND event.session_id = session.id
+             AND julianday(event.created_at) >= julianday(session.updated_at)
+         ) AS events_current,
+         EXISTS (
+           SELECT 1 FROM connector_commands AS command
+           WHERE command.user_id = session.user_id
+             AND command.connector_id = session.connector_id
+             AND command.session_id = session.id
+             AND command.type = 'session.history'
+             AND command.status = 'succeeded'
+             AND julianday(command.completed_at) >= julianday(session.updated_at)
+         ) AS history_current
+       FROM agent_sessions AS session
+       WHERE session.user_id = ?1
+         AND session.connector_id = ?2
+         AND session.id = ?3`,
     )
       .bind(
         session.userId,
         parsedConnectorId.data,
         parsedSessionId.data,
       )
-      .first();
+      .first<{ events_current: number; history_current: number }>();
     if (!owned) {
       return response(
         request,
@@ -436,6 +455,40 @@ export async function handleApi(
         { error: "session-not-found" },
         { status: 404 },
       );
+    }
+    const inFlight = await env.DB.prepare(
+      `SELECT id, status FROM connector_commands
+       WHERE user_id = ?1 AND connector_id = ?2 AND session_id = ?3
+         AND type = 'session.history'
+         AND status IN ('queued', 'sent', 'accepted')
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+      .bind(
+        session.userId,
+        parsedConnectorId.data,
+        parsedSessionId.data,
+      )
+      .first<{ id: string; status: "queued" | "sent" | "accepted" }>();
+    if (inFlight) {
+      return response(
+        request,
+        env,
+        {
+          command: {
+            id: inFlight.id,
+            type: "session.history",
+            status: inFlight.status,
+          },
+        },
+        { status: 202 },
+      );
+    }
+    if (owned.events_current === 1 || owned.history_current === 1) {
+      return response(request, env, {
+        command: null,
+        synced: true,
+      });
     }
     const command = syncSessionHistoryCommandSchema.parse({
       type: "session.history",

@@ -34,7 +34,9 @@ silvermoon-connector ─── GitHub Copilot SDK ─── local Copilot sessio
 
 The connector sends registration, inventory, command results, and session
 events through tRPC mutations. The relay sends session commands through a
-tRPC subscription on the same WebSocket.
+tRPC subscription on the same WebSocket. Persisted session history is loaded
+on demand, uploaded in bounded event batches, and coalesced by the relay when
+the same session is already synchronized or has a history command in flight.
 
 ## Requirements
 

@@ -17,6 +17,7 @@ export interface SilvermoonConnectorOptions {
 
 type ConnectorClient = ReturnType<typeof createTRPCClient<ConnectorRouter>>;
 type ConnectorWsClient = ReturnType<typeof createWSClient>;
+const HISTORY_EVENT_BATCH_SIZE = 50;
 
 function connectorSocketUrl(relayUrl: string, connectorId: string): string {
   const url = new URL(relayUrl);
@@ -63,6 +64,7 @@ export class SilvermoonConnector {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private connected = false;
   private running = false;
+  private connectionGeneration = 0;
   private commandQueue = Promise.resolve();
   private readonly pendingEvents: AgentAdapterEvent[] = [];
 
@@ -95,6 +97,7 @@ export class SilvermoonConnector {
       },
       onOpen: () => void this.onOpen(),
       onClose: () => {
+        this.connectionGeneration += 1;
         this.connected = false;
         this.log("Relay connection closed; tRPC will reconnect.");
       },
@@ -107,8 +110,13 @@ export class SilvermoonConnector {
     });
     this.commandSubscription = this.client.commands.subscribe(undefined, {
       onData: (command) => {
+        const generation = this.connectionGeneration;
         this.commandQueue = this.commandQueue
-          .then(() => this.executeCommand(command))
+          .then(() =>
+            generation === this.connectionGeneration
+              ? this.executeCommand(command, generation)
+              : undefined
+          )
           .catch((error: unknown) => {
             this.log(`Command queue failed: ${errorMessage(error)}`);
           });
@@ -138,6 +146,7 @@ export class SilvermoonConnector {
   private async onOpen(): Promise<void> {
     const client = this.client;
     if (!client || !this.running) return;
+    const generation = this.connectionGeneration;
     try {
       const welcome = await client.register.mutate({
         connectorId: this.options.connectorId,
@@ -147,6 +156,7 @@ export class SilvermoonConnector {
       });
       const sessions = await this.options.adapter.listSessions();
       await client.syncSessions.mutate({ sessions });
+      if (generation !== this.connectionGeneration) return;
       this.connected = true;
       this.log(
         `Relay accepted ${welcome.connectorId} as ${welcome.connectionId}.`,
@@ -163,13 +173,18 @@ export class SilvermoonConnector {
     }
   }
 
-  private async executeCommand(command: ConnectorCommand): Promise<void> {
+  private async executeCommand(
+    command: ConnectorCommand,
+    generation: number,
+  ): Promise<void> {
     const client = this.client;
-    if (!client) return;
+    if (!client || generation !== this.connectionGeneration) return;
     await client.commandAccepted.mutate({ commandId: command.commandId });
+    if (generation !== this.connectionGeneration) return;
     try {
       if (command.type === "sessions.list") {
         const sessions = await this.options.adapter.listSessions();
+        if (generation !== this.connectionGeneration) return;
         await client.syncSessions.mutate({
           commandId: command.commandId,
           sessions,
@@ -180,8 +195,16 @@ export class SilvermoonConnector {
         const events = await this.options.adapter.loadSessionHistory(
           command.sessionId,
         );
-        for (const event of events) {
-          await client.sessionEvent.mutate(event);
+        if (generation !== this.connectionGeneration) return;
+        for (
+          let index = 0;
+          index < events.length;
+          index += HISTORY_EVENT_BATCH_SIZE
+        ) {
+          await client.sessionEvents.mutate({
+            events: events.slice(index, index + HISTORY_EVENT_BATCH_SIZE),
+          });
+          if (generation !== this.connectionGeneration) return;
         }
         await client.commandCompleted.mutate({
           commandId: command.commandId,
@@ -194,6 +217,7 @@ export class SilvermoonConnector {
           prompt: command.prompt,
           ...(command.title === undefined ? {} : { title: command.title }),
         });
+        if (generation !== this.connectionGeneration) return;
         await client.sessionUpdated.mutate(session);
         await client.commandCompleted.mutate({
           commandId: command.commandId,
@@ -206,11 +230,13 @@ export class SilvermoonConnector {
         sessionId: command.sessionId,
         message: command.message,
       });
+      if (generation !== this.connectionGeneration) return;
       await client.commandCompleted.mutate({
         commandId: command.commandId,
         outcome: "succeeded",
       });
     } catch (error) {
+      if (generation !== this.connectionGeneration) return;
       await client.commandCompleted.mutate({
         commandId: command.commandId,
         outcome: "failed",
