@@ -705,6 +705,8 @@ textarea:focus-visible {
 }
 
 .session-workspace {
+  --conversation-inline-padding: clamp(1rem, 5vw, 4.5rem);
+
   grid-area: workspace;
   display: flex;
   min-width: 0;
@@ -732,7 +734,10 @@ textarea:focus-visible {
   min-height: 100%;
   flex-direction: column;
   margin-inline: auto;
-  padding: clamp(1.5rem, 4vw, 3.2rem) clamp(1rem, 5vw, 4.5rem) 2rem;
+  padding:
+    clamp(1.5rem, 4vw, 3.2rem)
+    var(--conversation-inline-padding)
+    2rem;
 }
 
 .transcript-origin {
@@ -889,22 +894,41 @@ textarea:focus-visible {
   line-height: 1.5;
 }
 
-.session-composer {
-  display: grid;
+.session-composer-shell {
   width: 100%;
   flex: 0 0 auto;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.55rem;
-  padding: 0.65rem clamp(1rem, 5vw, 4.5rem) max(0.85rem, env(safe-area-inset-bottom));
+  overflow: hidden;
   background:
     linear-gradient(to bottom, rgb(255 255 255 / 72%), #fff 1rem);
   border-top: 1px solid var(--border);
+  scrollbar-gutter: stable;
+}
+
+.session-composer {
+  display: grid;
+  width: min(100%, 62rem);
+  gap: 0.45rem;
+  margin-inline: auto;
+  padding:
+    0.65rem
+    var(--conversation-inline-padding)
+    max(0.85rem, env(safe-area-inset-bottom));
+}
+
+.composer-toolbar {
+  display: flex;
+  min-width: 0;
+  min-height: 2.55rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .composer-status {
   display: flex;
+  min-width: 0;
   min-height: 1.25rem;
-  grid-column: 1 / -1;
+  flex: 1;
   align-items: center;
   gap: 0.4rem;
   color: var(--muted-foreground);
@@ -917,6 +941,7 @@ textarea:focus-visible {
 }
 
 .session-composer textarea {
+  width: 100%;
   min-height: 4rem;
   max-height: 10rem;
   padding: 0.8rem 0.9rem;
@@ -929,8 +954,7 @@ textarea:focus-visible {
 .composer-send {
   width: 2.55rem;
   height: 2.55rem;
-  align-self: end;
-  margin-bottom: 0.1rem;
+  flex: 0 0 auto;
   border-radius: 0.72rem;
 }
 
@@ -1315,6 +1339,8 @@ textarea:focus-visible {
 
   .session-rail,
   .session-workspace {
+    --conversation-inline-padding: 0.9rem;
+
     grid-area: content;
   }
 
@@ -1375,7 +1401,10 @@ textarea:focus-visible {
   }
 
   .transcript {
-    padding: 1.2rem 0.9rem 1rem;
+    padding:
+      1.2rem
+      var(--conversation-inline-padding)
+      1rem;
   }
 
   .transcript-origin {
@@ -1392,7 +1421,10 @@ textarea:focus-visible {
   }
 
   .session-composer {
-    padding: 0.55rem 0.7rem max(0.7rem, env(safe-area-inset-bottom));
+    padding:
+      0.55rem
+      var(--conversation-inline-padding)
+      max(0.7rem, env(safe-area-inset-bottom));
   }
 
   .session-composer textarea {
