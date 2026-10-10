@@ -4,15 +4,15 @@
 
 ### Implementation steps
 
-- [ ] **I-S01:** 复现并定位静默投递失败
-- [ ] **I-S02:** 修正 Agent Host 消息投递
-- [ ] **I-S03:** 覆盖成功与失败回归
+- [x] **I-S01:** 复现并定位静默投递失败
+- [x] **I-S02:** 修正 Agent Host 消息投递
+- [x] **I-S03:** 覆盖成功与失败回归
 
 ### Implementation acceptance criteria
 
-- [ ] **I-AC01:** Waiting 消息进入事件流
-- [ ] **I-AC02:** 命令成功语义可靠
-- [ ] **I-AC03:** 既有发送路径无回退
+- [x] **I-AC01:** Waiting 消息进入事件流
+- [x] **I-AC02:** 命令成功语义可靠
+- [x] **I-AC03:** 既有发送路径无回退
 
 ## Deployment
 
