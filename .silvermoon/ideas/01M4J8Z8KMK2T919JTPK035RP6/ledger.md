@@ -18,10 +18,10 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 只读核查组织就绪
+- [x] **D-S01:** 只读核查组织就绪
 - [x] **D-S02:** 验证现有生产自动化
 
 ### Deployment acceptance criteria
 
-- [ ] **D-AC01:** 组织就绪已确认
+- [x] **D-AC01:** 组织就绪已确认
 - [x] **D-AC02:** 现有自动化与服务可用
