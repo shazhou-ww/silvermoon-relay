@@ -67,6 +67,21 @@ Copy `apps/web/.env.example` to `apps/web/.env.local` when the relay origin
 needs to differ from `https://relay.silvermoon.work`. Put local Worker secrets
 in `apps/worker/.dev.vars`; neither file is committed.
 
+The message stream opens at the latest visible event and follows updates only
+while within 64 CSS pixels of the bottom. Scrolling farther up preserves the
+reading position; **Jump to latest** returns to the bottom and resumes following.
+The control supports keyboard activation and respects reduced-motion preferences.
+
+Run the Web browser regressions (mocked relay API, no production credentials):
+
+```powershell
+pnpm --filter @silvermoon-ai/web exec playwright install chromium
+pnpm --filter @silvermoon-ai/web test:browser
+```
+
+These cover desktop and narrow-screen positioning, history protection, Session
+switching, filtering, reconnects, layout changes, and accessible return controls.
+
 ## Run a connector
 
 Create a connection token in the Web UI, build the connector, and start it on

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>消息流滚动行为评审</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #f4f5f6;
+      --surface: #ffffff;
+      --ink: #1b1d1f;
+      --muted: #62686e;
+      --border: #d8dcdf;
+      --accent: #334cc4;
+      --accent-soft: #e8ecff;
+      --warning: #8a5a08;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(rgba(27, 29, 31, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(27, 29, 31, 0.025) 1px, transparent 1px),
+        var(--canvas);
+      background-size: 28px 28px;
+      font-family: "Aptos", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    a, button { font: inherit; }
+    a:focus-visible, button:focus-visible, iframe:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+      outline-offset: 2px;
+    }
+
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 10;
+      padding: 8px 12px;
+      color: #fff;
+      background: var(--ink);
+      border-radius: 6px;
+      transform: translateY(-150%);
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    header, main, footer {
+      width: min(1480px, calc(100% - 40px));
+      margin-inline: auto;
+    }
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: start;
+      padding: 28px 0 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 { margin: 0; font-size: 27px; line-height: 1.2; }
+    header p { max-width: 72ch; margin: 6px 0 0; color: var(--muted); }
+    .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
+    .status::before { width: 8px; height: 8px; background: var(--warning); border-radius: 50%; content: ""; }
+
+    main { padding: 20px 0 40px; }
+    .decision {
+      display: grid;
+      grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.15fr);
+      gap: 24px;
+      align-items: center;
+      padding: 16px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .eyebrow { margin: 0 0 4px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    h2 { margin: 0; font-size: 18px; line-height: 1.35; }
+    .deltas { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .deltas li { padding: 5px 8px; color: #203573; background: var(--accent-soft); border-radius: 5px; font-size: 12px; font-weight: 650; }
+
+    .scenarios { margin-top: 18px; }
+    .tabs { display: flex; gap: 4px; overflow-x: auto; padding: 3px; background: #e8eaec; border: 1px solid var(--border); border-radius: 7px; }
+    .tab {
+      min-height: 36px;
+      flex: 0 0 auto;
+      padding: 7px 12px;
+      color: var(--muted);
+      border-radius: 5px;
+      font-weight: 650;
+      text-decoration: none;
+    }
+    .tab[aria-selected="true"] { color: var(--ink); background: var(--surface); box-shadow: 0 1px 3px rgba(27, 29, 31, 0.12); }
+    .frame-shell { margin-top: 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+    iframe { display: block; width: 100%; min-height: 720px; border: 0; }
+
+    .review-end { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; align-items: center; margin-top: 18px; }
+    .review-end p { margin: 0; color: var(--muted); }
+    .review-end strong { color: var(--ink); }
+    .source { color: var(--accent); }
+    footer { padding-bottom: 28px; color: var(--muted); font-size: 12px; }
+
+    @media (max-width: 720px) {
+      header, main, footer { width: min(100% - 24px, 1480px); }
+      header, .decision, .review-end { grid-template-columns: 1fr; }
+      .status { white-space: normal; }
+      .deltas { justify-content: flex-start; }
+      .tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); overflow: visible; }
+      .tab { min-width: 0; overflow-wrap: anywhere; text-align: center; }
+      iframe { min-height: 1040px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#review">跳到评审内容</a>
+  <header>
+    <div>
+      <h1>消息流滚动行为评审</h1>
+      <p>比较长 Session 当前的初始位置与历史浏览体验，以及自动显示最新内容并提供返回入口后的状态。</p>
+    </div>
+    <span class="status">说明性评审材料</span>
+  </header>
+
+  <main id="review">
+    <section class="decision" aria-labelledby="decision-title">
+      <div>
+        <p class="eyebrow">待决定</p>
+        <h2 id="decision-title">是否采用“默认跟随最新、离开底部后由用户主动返回”的消息流交互？</h2>
+      </div>
+      <ul class="deltas" aria-label="关键变化">
+        <li>打开与底部停留时自动跟随最新消息</li>
+        <li>浏览历史时显示浮动返回按钮</li>
+      </ul>
+    </section>
+
+    <section class="scenarios" aria-label="评审场景">
+      <nav class="tabs" role="tablist" aria-label="选择场景">
+        <a class="tab" id="tab-open" role="tab" aria-selected="true" href="scenarios/01-open-session.html" target="scenario-frame">打开长 Session</a>
+        <a class="tab" id="tab-history" role="tab" aria-selected="false" href="scenarios/02-browse-history.html" target="scenario-frame">浏览历史后返回</a>
+      </nav>
+      <div class="frame-shell">
+        <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-open-session.html" title="打开长 Session 对比"></iframe>
+      </div>
+    </section>
+
+    <section class="review-end" aria-label="评审结论">
+      <p>此材料仅用于说明视觉与交互方向，不是生产 UI 或规范性行为契约。<a class="source" href="../Idea.md">规范来源</a></p>
+      <strong>是否同意以此消息流定位与返回交互作为实现方向？</strong>
+    </section>
+  </main>
+
+  <footer>需在实现中校准“接近底部”的容差，并在系统启用减少动态效果时改为即时定位，避免滚动抖动。</footer>
+
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    const tabs = [...document.querySelectorAll(".tab")];
+
+    function selectTab(tab) {
+      tabs.forEach((candidate) => candidate.setAttribute("aria-selected", String(candidate === tab)));
+      frame.title = `${tab.textContent.trim()}对比`;
+    }
+
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => selectTab(tab));
+      tab.addEventListener("keydown", (event) => {
+        let nextIndex = null;
+        if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+        if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === "Home") nextIndex = 0;
+        if (event.key === "End") nextIndex = tabs.length - 1;
+        if (nextIndex === null) return;
+        event.preventDefault();
+        tabs[nextIndex].click();
+        tabs[nextIndex].focus();
+      });
+    });
+
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      frame.style.height = `${Math.max(320, Number(event.data.height) || 0)}px`;
+    });
+  </script>
+</body>
+</html>
