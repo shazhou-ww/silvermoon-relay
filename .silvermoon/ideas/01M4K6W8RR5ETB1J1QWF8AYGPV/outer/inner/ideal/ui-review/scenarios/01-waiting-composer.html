@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Waiting Session 发送区对比</title>
+  <style>
+    :root { color-scheme: light; --surface: #fff; --canvas: #f1f4f7; --ink: #15202b; --muted: #657184; --border: #d7dee8; --primary: #3859e9; --primary-soft: #e5eaff; --warning: #a76518; --warning-soft: #fff0d9; }
+    * { box-sizing: border-box; }
+    html { min-width: 300px; background: var(--surface); }
+    body { min-width: 300px; margin: 0; padding: 18px; color: var(--ink); background: var(--surface); font: 14px/1.5 "Segoe UI Variable", "Aptos", sans-serif; }
+    .scenario-heading { display: grid; grid-template-columns: .8fr 1.2fr; gap: 24px; align-items: end; margin-bottom: 14px; }
+    h1 { margin: 0; font-size: 21px; line-height: 1.3; }
+    .scenario-heading p { margin: 4px 0 0; color: var(--muted); }
+    .callouts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .callouts li { padding: 5px 9px; color: #253b9e; background: var(--primary-soft); border-radius: 999px; font-size: 12px; font-weight: 650; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+    .state { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; }
+    .state.after { border-color: #9aaaf0; }
+    .state-label { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; background: #f4f6f8; border-bottom: 1px solid var(--border); }
+    .state-label span { color: var(--muted); font-size: 12px; }
+    .product-surface { padding: 14px; background: #e9edf2; }
+    .app { display: grid; height: 500px; grid-template-rows: auto 1fr auto; overflow: hidden; background: var(--surface); border: 1px solid #cdd5df; border-radius: 10px; box-shadow: 0 12px 28px rgb(28 41 58 / 10%); }
+    .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--border); }
+    .bar strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pill { padding: 3px 8px; color: #80520e; background: var(--warning-soft); border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .transcript { display: grid; align-content: start; gap: 12px; overflow: hidden; padding: 18px; background: var(--canvas); }
+    .turn { max-width: 82%; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; }
+    .turn.user { justify-self: end; color: #fff; background: var(--primary); border-color: var(--primary); }
+    .turn strong { display: block; margin-bottom: 3px; font-size: 11px; }
+    .tool { padding: 9px 11px; color: var(--muted); background: #f8fafb; border: 1px dashed var(--border); border-radius: 8px; font-size: 12px; }
+    .composer { padding: 12px; background: var(--surface); border-top: 1px solid var(--border); }
+    .input { min-height: 76px; padding: 11px; color: var(--muted); background: #f7f8fa; border: 1px solid #cbd3de; border-radius: 9px; }
+    .before .input { color: #939ba7; background: #eef0f3; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; color: var(--muted); font-size: 11px; }
+    button { width: 34px; height: 34px; color: #fff; background: var(--primary); border: 0; border-radius: 8px; font: inherit; font-weight: 700; }
+    button:disabled { color: #9aa2ad; background: #e3e6ea; }
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      .scenario-heading, .comparison { grid-template-columns: 1fr; }
+      .callouts { justify-content: flex-start; }
+      .app { height: 430px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>在线 Session 等待用户后续输入</h1>
+      <p>同一 Connector、Session、transcript 与 waiting 状态；仅比较消息发送能力。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>输入区恢复可编辑</li>
+      <li>发送按钮恢复可用</li>
+    </ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>waiting · 在线 · 可交互</span></header>
+      <div class="product-surface">
+        <div class="app">
+          <div class="bar"><strong>Investigate connector reconnect</strong><span class="pill">Waiting</span></div>
+          <div class="transcript">
+            <div class="turn user"><strong>You</strong>请检查 reconnect 后的事件流。</div>
+            <div class="turn"><strong>Copilot</strong>我需要确认是否继续使用当前 Session。</div>
+            <div class="tool">Agent 正在等待用户输入</div>
+          </div>
+          <div class="composer">
+            <div class="input" aria-disabled="true">This Session is read-only</div>
+            <div class="toolbar"><span>Send to Studio laptop</span><button type="button" disabled aria-label="发送消息">↑</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>waiting · 在线 · 可交互</span></header>
+      <div class="product-surface">
+        <div class="app">
+          <div class="bar"><strong>Investigate connector reconnect</strong><span class="pill">Waiting</span></div>
+          <div class="transcript">
+            <div class="turn user"><strong>You</strong>请检查 reconnect 后的事件流。</div>
+            <div class="turn"><strong>Copilot</strong>我需要确认是否继续使用当前 Session。</div>
+            <div class="tool">Agent 正在等待用户输入</div>
+          </div>
+          <div class="composer">
+            <div class="input">继续使用当前 Session，并验证缺失事件。</div>
+            <div class="toolbar"><span>Send to Studio laptop</span><button type="button" aria-label="发送消息">↑</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>

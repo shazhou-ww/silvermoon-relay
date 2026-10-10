@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Waiting Session 消息交互评审</title>
+  <style>
+    :root { color-scheme: light; --canvas: #eef2f6; --surface: #fff; --ink: #15202b; --muted: #657184; --border: #d7dee8; --primary: #3859e9; --soft: #e5eaff; --warning: #a76518; }
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body { min-width: 320px; min-height: 100vh; margin: 0; color: var(--ink); background: var(--canvas); font: 14px/1.5 "Segoe UI Variable", "Aptos", sans-serif; }
+    a:focus-visible, iframe:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 32%, transparent); outline-offset: 3px; }
+    header, main, footer { width: min(1440px, calc(100% - 40px)); margin-inline: auto; }
+    header { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; padding: 28px 0 20px; border-bottom: 1px solid var(--border); }
+    h1 { margin: 0; font-size: clamp(25px, 3vw, 34px); line-height: 1.1; }
+    header p, footer { color: var(--muted); }
+    header p { max-width: 72ch; margin: 8px 0 0; }
+    .status { white-space: nowrap; }
+    .status::before { display: inline-block; width: 8px; height: 8px; margin-right: 8px; background: var(--warning); border-radius: 50%; content: ""; }
+    main { padding: 20px 0 36px; }
+    .decision { display: grid; grid-template-columns: minmax(280px, .9fr) 1.1fr; gap: 24px; align-items: center; padding: 16px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+    .eyebrow { margin: 0 0 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    h2 { margin: 0; font-size: 19px; }
+    .deltas { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .deltas li { padding: 5px 9px; color: #253b9e; background: var(--soft); border-radius: 999px; font-size: 12px; font-weight: 650; }
+    .frame { margin-top: 14px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+    iframe { display: block; width: 100%; min-height: 680px; border: 0; }
+    .review-end { display: grid; grid-template-columns: 1fr auto; gap: 24px; margin-top: 18px; }
+    .review-end p { margin: 0; color: var(--muted); }
+    .review-end a { color: var(--primary); }
+    footer { padding-bottom: 28px; font-size: 12px; }
+    @media (max-width: 720px) {
+      header, main, footer { width: min(100% - 24px, 1440px); }
+      header, .decision, .review-end { grid-template-columns: 1fr; }
+      .deltas { justify-content: flex-start; }
+      iframe { min-height: 1030px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Waiting Session 消息交互</h1>
+      <p>聚焦同一在线、可交互 Session 进入 waiting 后的消息发送区，不改变 transcript、状态标签或审批流程。</p>
+    </div>
+    <span class="status">说明性评审材料</span>
+  </header>
+  <main>
+    <section class="decision" aria-labelledby="decision-title">
+      <div>
+        <p class="eyebrow">待决定</p>
+        <h2 id="decision-title">是否让底层仍可交互的 waiting Session 保持消息输入与发送能力？</h2>
+      </div>
+      <ul class="deltas" aria-label="关键变化">
+        <li>输入框由禁用改为可编辑</li>
+        <li>waiting 状态标签保持不变</li>
+        <li>只读与离线保护保持不变</li>
+      </ul>
+    </section>
+    <div class="frame">
+      <iframe id="scenario" src="scenarios/01-waiting-composer.html" title="Waiting Session 发送区对比"></iframe>
+    </div>
+    <section class="review-end">
+      <p>本材料仅用于说明界面决策，不是生产 UI 或规范性行为契约。<a href="../Idea.md">规范来源：Idea.md</a></p>
+      <strong>是否批准 waiting Session 在仍可交互时继续发送消息？</strong>
+    </section>
+  </main>
+  <footer>未决风险：Agent Host 摘要可能缺少默认 chat；实施阶段需明确该缺失是暂态目录信息还是实际只读信号。</footer>
+  <script>
+    const frame = document.querySelector("#scenario");
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      frame.style.height = `${Math.max(320, Number(event.data.height) || 0)}px`;
+    });
+  </script>
+</body>
+</html>
