@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>打开长 Session</title>
+  <link rel="stylesheet" href="../scenario.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>打开长 Session</h1>
+      <p>从 Session 列表进入已有历史记录的同一会话。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>首批历史完成布局后定位到底部</li>
+      <li>输入区和最新回复立即可见</li>
+    </ul>
+  </header>
+
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label">
+        <strong id="before-title">Before</strong>
+        <span>同一 Session · 12 条事件 · 640×500</span>
+      </header>
+      <div class="product-surface">
+        <div class="session-pane">
+          <div class="session-header">
+            <div class="session-title">
+              <strong>Production-like local development</strong>
+              <span>Studio laptop</span>
+            </div>
+            <span class="status">Working</span>
+          </div>
+          <div class="transcript-window">
+            <div class="transcript-content">
+              <p class="origin">Session opened · Today, 9:42 AM · Studio laptop</p>
+              <div class="message user"><p>先检查本地登录为什么一直 Failed to fetch。</p></div>
+              <div class="message assistant"><p>我先核对 Web 与 Worker 的 origin、OAuth 配置和本地 secrets。</p></div>
+              <div class="activity">Read apps/web and Worker authentication configuration</div>
+              <div class="message assistant"><p>当前 localhost 请求仍指向生产 Relay，并被 production CORS 拒绝。</p></div>
+            </div>
+          </div>
+          <div class="composer">
+            <div class="composer-box">
+              <span>Ask for the next step...</span>
+              <span class="send" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label">
+        <strong id="after-title">After</strong>
+        <span>同一 Session · 12 条事件 · 640×500</span>
+      </header>
+      <div class="product-surface">
+        <div class="session-pane">
+          <div class="session-header">
+            <div class="session-title">
+              <strong>Production-like local development</strong>
+              <span>Studio laptop</span>
+            </div>
+            <span class="status">Working</span>
+          </div>
+          <div class="transcript-window">
+            <div class="transcript-content at-bottom">
+              <div class="activity">Validated loopback OAuth callback and local CORS policy</div>
+              <div class="message assistant"><p>问题已定位：本地 Web 缺少独立 profile，Worker 也只允许 production origin。</p></div>
+              <div class="message user"><p>把结论写进 new idea，我们再做统一的 local dev 命令。</p></div>
+              <div class="message assistant"><p>已创建方向卡，并补充日常 loopback 与 preview parity 两级运行面。</p></div>
+            </div>
+            <div class="fade-top" aria-hidden="true"></div>
+          </div>
+          <div class="composer">
+            <div class="composer-box">
+              <span>Ask for the next step...</span>
+              <span class="send" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({
+        type: "ui-review:height",
+        height: document.documentElement.scrollHeight,
+      }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>

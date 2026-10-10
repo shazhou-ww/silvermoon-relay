@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>浏览历史后返回</title>
+  <link rel="stylesheet" href="../scenario.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>浏览历史后返回</h1>
+      <p>用户主动向上滚动查看旧消息，期间 Agent 继续产生事件。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>新事件不抢走历史阅读位置</li>
+      <li>浮动入口一键回到最新消息</li>
+    </ul>
+  </header>
+
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label">
+        <strong id="before-title">Before</strong>
+        <span>同一 Session · 用户已向上滚动</span>
+      </header>
+      <div class="product-surface">
+        <div class="session-pane">
+          <div class="session-header">
+            <div class="session-title">
+              <strong>Production-like local development</strong>
+              <span>Studio laptop</span>
+            </div>
+            <span class="status">Working</span>
+          </div>
+          <div class="transcript-window">
+            <div class="transcript-content">
+              <div class="message assistant"><p>生产 Worker 仅允许配置的 WEB_ORIGIN，本地请求因此没有 CORS header。</p></div>
+              <div class="message user"><p>那本地 OAuth callback 也会失败吗？</p></div>
+              <div class="message assistant"><p>会。本地 Worker 仍使用 production AUTH_BASE_URL，且 .dev.vars 缺失时 OAuth start 返回 500。</p></div>
+              <div class="activity">Inspect OAuth start route and local environment loading</div>
+            </div>
+            <span class="history-position">Earlier messages</span>
+            <div class="fade-top" aria-hidden="true"></div>
+          </div>
+          <div class="composer">
+            <div class="composer-box">
+              <span>Ask for the next step...</span>
+              <span class="send" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label">
+        <strong id="after-title">After</strong>
+        <span>同一 Session · 用户已向上滚动</span>
+      </header>
+      <div class="product-surface">
+        <div class="session-pane">
+          <div class="session-header">
+            <div class="session-title">
+              <strong>Production-like local development</strong>
+              <span>Studio laptop</span>
+            </div>
+            <span class="status">Working</span>
+          </div>
+          <div class="transcript-window">
+            <div class="transcript-content">
+              <div class="message assistant"><p>生产 Worker 仅允许配置的 WEB_ORIGIN，本地请求因此没有 CORS header。</p></div>
+              <div class="message user"><p>那本地 OAuth callback 也会失败吗？</p></div>
+              <div class="message assistant"><p>会。本地 Worker 仍使用 production AUTH_BASE_URL，且 .dev.vars 缺失时 OAuth start 返回 500。</p></div>
+              <div class="activity">Inspect OAuth start route and local environment loading</div>
+            </div>
+            <span class="history-position">Earlier messages</span>
+            <div class="fade-top" aria-hidden="true"></div>
+            <button class="jump-latest" type="button" aria-label="Jump to latest message">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="m6 9 6 6 6-6"/>
+                <path d="m6 4 6 6 6-6"/>
+              </svg>
+              Jump to latest
+            </button>
+          </div>
+          <div class="composer">
+            <div class="composer-box">
+              <span>Ask for the next step...</span>
+              <span class="send" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({
+        type: "ui-review:height",
+        height: document.documentElement.scrollHeight,
+      }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>
