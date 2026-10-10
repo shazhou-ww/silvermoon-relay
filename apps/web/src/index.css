@@ -761,24 +761,6 @@ textarea:focus-visible {
   margin-bottom: 1.6rem;
 }
 
-.conversation-message header {
-  display: flex;
-  align-items: baseline;
-  gap: 0.65rem;
-  margin-bottom: 0.38rem;
-  color: var(--muted-foreground);
-  font-size: 0.7rem;
-}
-
-.conversation-message header strong {
-  color: var(--foreground);
-  font-size: 0.74rem;
-}
-
-.conversation-message header time {
-  font-variant-numeric: tabular-nums;
-}
-
 .conversation-message p {
   margin: 0;
   overflow-wrap: anywhere;
@@ -787,23 +769,51 @@ textarea:focus-visible {
   line-height: 1.65;
 }
 
+.message-time {
+  display: block;
+  height: 1rem;
+  margin-top: 0.3rem;
+  color: var(--muted-foreground);
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 100ms ease;
+}
+
+.conversation-message:hover .message-time,
+.conversation-message:focus-within .message-time {
+  opacity: 1;
+}
+
 .message-user {
   align-self: flex-end;
+}
+
+.message-user p {
   padding: 0.8rem 0.95rem;
   color: #203573;
   background: #e8ecff;
   border-radius: 0.85rem 0.85rem 0.2rem 0.85rem;
 }
 
-.message-user header {
-  justify-content: flex-end;
-  margin-bottom: 0.3rem;
+.message-user .message-time {
+  padding-right: 0.25rem;
+  text-align: right;
 }
 
 .message-assistant {
   align-self: flex-start;
+}
+
+.message-assistant p {
   padding-left: 1rem;
   border-left: 2px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+
+.message-assistant .message-time {
+  padding-left: 1rem;
 }
 
 .message-system {

@@ -18,7 +18,7 @@
 
 窄屏默认展示 Session 列表，选择后进入全屏 Session 内容，并提供明确的返回列表操作；浏览器前进 / 后退遵循同一 list / detail 模型。Device、token、identity 和 browser-session 管理从主工作区移入 account menu 启动的 settings dialog。
 
-补齐语义 label、键盘操作、可见焦点、颜色之外的状态文字、长内容换行与 reduced-motion 处理，并覆盖 loading、empty、offline、waiting、failed、sending 与 command failure 状态，不产生文档级横向滚动。`Shift+Enter` 换行提示只出现在可发送 textarea 的 placeholder 中，不额外占用输入框上方空间。本期不渲染空白第三栏、Inspector toggle 或 Inspector placeholder。
+补齐语义 label、键盘操作、可见焦点、颜色之外的状态文字、长内容换行与 reduced-motion 处理，并覆盖 loading、empty、offline、waiting、failed、sending 与 command failure 状态，不产生文档级横向滚动。消息正文不显示重复的发送者栏；发送者语义保留在可访问名称中，时间位于消息气泡下方并始终保留布局高度，只在 hover 时变为可见。`Shift+Enter` 换行提示只出现在可发送 textarea 的 placeholder 中，不额外占用输入框上方空间。本期不渲染空白第三栏、Inspector toggle 或 Inspector placeholder。
 
 ## Acceptance criteria
 
@@ -32,4 +32,4 @@
 
 ### I-AC03: 窄屏操作与可访问性可用
 
-390px 宽度下，Session 列表和专注内容是两个 focused view 而不是纵向长页，account settings 保持可达，浏览器导航在两个视图间行为可预测；常见 waiting、offline、failed、empty 和 command 状态可理解、可操作，键盘顺序、焦点可见性和可访问名称通过自动检查与浏览器走查证明。
+390px 宽度下，Session 列表和专注内容是两个 focused view 而不是纵向长页，account settings 保持可达，浏览器导航在两个视图间行为可预测；常见 waiting、offline、failed、empty 和 command 状态可理解、可操作，消息时间显隐不造成布局位移，键盘顺序、焦点可见性和可访问名称通过自动检查与浏览器走查证明。

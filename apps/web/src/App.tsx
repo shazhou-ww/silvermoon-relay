@@ -1291,14 +1291,15 @@ function App() {
                               <article
                                 key={event.id}
                                 className={`conversation-message message-${event.role ?? "system"}`}
+                                aria-label={`${eventLabel(event)} message sent ${formatTime(event.createdAt)}`}
                               >
-                                <header>
-                                  <strong>{eventLabel(event)}</strong>
-                                  <time dateTime={event.createdAt}>
-                                    {formatTime(event.createdAt)}
-                                  </time>
-                                </header>
                                 <p>{eventBody(event)}</p>
+                                <time
+                                  className="message-time"
+                                  dateTime={event.createdAt}
+                                >
+                                  {formatTime(event.createdAt)}
+                                </time>
                               </article>
                             )
                           : (
