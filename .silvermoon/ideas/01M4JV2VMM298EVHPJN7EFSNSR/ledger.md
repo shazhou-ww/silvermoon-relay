@@ -18,7 +18,7 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 发布 Web 消息流更新
+- [x] **D-S01:** 发布 Web 消息流更新
 - [ ] **D-S02:** 验证线上长会话体验
 
 ### Deployment acceptance criteria
