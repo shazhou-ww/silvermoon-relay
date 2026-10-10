@@ -360,10 +360,12 @@ export class CopilotAgentAdapter implements AgentAdapter {
         };
         break;
       case "session.title_changed":
-        this.updateSummary(active, {
-          title: boundedText(event.data.title, 256),
-          updatedAt,
-        }, publishSummary);
+        if (publishSummary) {
+          this.updateSummary(active, {
+            title: boundedText(event.data.title, 256),
+            updatedAt,
+          });
+        }
         return null;
       case "session.shutdown":
         status = "closed";
@@ -372,10 +374,12 @@ export class CopilotAgentAdapter implements AgentAdapter {
         return null;
     }
 
-    if (status) {
-      this.updateSummary(active, { status, updatedAt }, publishSummary);
-    } else {
-      this.updateSummary(active, { updatedAt }, publishSummary);
+    if (publishSummary) {
+      if (status) {
+        this.updateSummary(active, { status, updatedAt });
+      } else {
+        this.updateSummary(active, { updatedAt });
+      }
     }
     return sessionEvent;
   }
