@@ -13,6 +13,7 @@ export interface CliOptions {
   tokenFile?: string;
   workingDirectory?: string;
   copilotHome?: string;
+  vscodeUserDataDirectory?: string;
   model?: string;
   approveAllPermissions: boolean;
 }
@@ -33,6 +34,8 @@ Options:
   --token-file <path>          Read the relay connection token from a file
   --working-directory <path>   Default working directory for Copilot sessions
   --copilot-home <path>        Override Copilot session/config storage
+  --vscode-user-data-dir <path>
+                               Override the VS Code user-data directory
   --model <model>              Default model (SDK default: auto)
   --approve-all                Auto-approve Copilot permission requests
   --help                       Show this help
@@ -44,11 +47,13 @@ Environment:
   SILVERMOON_RELAY_URL
   SILVERMOON_COPILOT_HOME
   SILVERMOON_COPILOT_MODEL
+  SILVERMOON_VSCODE_USER_DATA_DIR
 
-The connector uses the locally authenticated GitHub Copilot SDK runtime. Relay
-tokens are sent only in the WebSocket Authorization header and are never
-printed. --approve-all enables remote tool side effects; omit it unless this
-connector runs in a trusted environment.
+The connector uses the locally authenticated GitHub Copilot SDK runtime and
+discovers live VS Code Agent Host sessions from the current user's local
+endpoint registry. Relay and Agent Host tokens are never printed. --approve-all
+enables remote tool side effects; omit it unless this connector runs in a
+trusted environment.
 `;
 
 function takeValue(args: string[], index: number, option: string): string {
@@ -79,6 +84,7 @@ export function parseCliOptions(
       "--token-file",
       "--working-directory",
       "--copilot-home",
+      "--vscode-user-data-dir",
       "--model",
     ].includes(option)) {
       throw new Error(`Unknown option: ${option}`);
@@ -107,6 +113,8 @@ export function parseCliOptions(
     workingDirectory: values.get("--working-directory"),
     copilotHome: values.get("--copilot-home")
       ?? environment.SILVERMOON_COPILOT_HOME,
+    vscodeUserDataDirectory: values.get("--vscode-user-data-dir")
+      ?? environment.SILVERMOON_VSCODE_USER_DATA_DIR,
     model: values.get("--model")
       ?? environment.SILVERMOON_COPILOT_MODEL,
     approveAllPermissions,
@@ -139,6 +147,7 @@ async function main(): Promise<void> {
   const adapter = new CopilotAgentAdapter({
     workingDirectory: parsed.workingDirectory,
     baseDirectory: parsed.copilotHome,
+    vscodeUserDataDirectory: parsed.vscodeUserDataDirectory,
     model: parsed.model,
     approveAllPermissions: parsed.approveAllPermissions,
     log: (message) => process.stderr.write(`${message}\n`),

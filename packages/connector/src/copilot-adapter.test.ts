@@ -7,6 +7,7 @@ import type {
 import { agentSessionSchema } from "@silvermoon-ai/protocol";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentAdapterEvent } from "./adapter.js";
+import type { AgentHostSessionProvider } from "./agent-host-provider.js";
 import { CopilotAgentAdapter } from "./copilot-adapter.js";
 
 class FakeSession {
@@ -120,10 +121,99 @@ class FakeClient {
   }
 }
 
+class FakeAgentHostProvider implements AgentHostSessionProvider {
+  readonly sent: Array<{ sessionId: string; message: string }> = [];
+  readonly historyRequests: string[] = [];
+  closed = false;
+  private readonly listeners = new Set<
+    (event: AgentAdapterEvent) => void
+  >();
+  private readonly sessions = new Map([
+    [
+      "session-existing",
+      {
+        id: "session-existing",
+        title: "Live existing work",
+        status: "running" as const,
+        createdAt: "2026-10-10T00:00:00.000Z",
+        updatedAt: "2026-10-10T00:05:00.000Z",
+        lastMessagePreview: "Working in VS Code",
+      },
+    ],
+    [
+      "session-live-only",
+      {
+        id: "session-live-only",
+        title: "Live only",
+        status: "waiting" as const,
+        createdAt: "2026-10-10T00:02:00.000Z",
+        updatedAt: "2026-10-10T00:06:00.000Z",
+        lastMessagePreview: "Needs input",
+      },
+    ],
+  ]);
+
+  async listSessions() {
+    return [...this.sessions.values()];
+  }
+
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
+  async sendMessage(input: {
+    sessionId: string;
+    message: string;
+  }): Promise<void> {
+    this.sent.push(input);
+  }
+
+  async loadSessionHistory(sessionId: string) {
+    this.historyRequests.push(sessionId);
+    return [{
+      id: "ahp-history",
+      sessionId,
+      sequence: 1,
+      type: "message" as const,
+      role: "assistant" as const,
+      text: "Live history",
+      createdAt: "2026-10-10T00:05:00.000Z",
+    }];
+  }
+
+  subscribe(listener: (event: AgentAdapterEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+  }
+
+  disconnect(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    this.sessions.delete(sessionId);
+    for (const listener of this.listeners) {
+      listener({
+        type: "session.updated",
+        session: {
+          ...session,
+          status: "gone",
+          updatedAt: "2026-10-10T00:10:00.000Z",
+        },
+      });
+    }
+  }
+}
+
 describe("CopilotAgentAdapter", () => {
   it("lists, creates, and streams GitHub Copilot sessions", async () => {
     const client = new FakeClient();
-    const adapter = new CopilotAgentAdapter({ client });
+    const adapter = new CopilotAgentAdapter({
+      client,
+      agentHostProvider: false,
+    });
     const events: AgentAdapterEvent[] = [];
     adapter.subscribe((event) => events.push(event));
 
@@ -250,5 +340,69 @@ describe("CopilotAgentAdapter", () => {
     expect(new Set(sequences).size).toBe(sequences.length);
 
     await adapter.close();
+  });
+
+  it("merges live Agent Host sessions and falls back to persisted sessions", async () => {
+    const client = new FakeClient();
+    const agentHostProvider = new FakeAgentHostProvider();
+    const adapter = new CopilotAgentAdapter({ client, agentHostProvider });
+    const events: AgentAdapterEvent[] = [];
+    adapter.subscribe((event) => events.push(event));
+
+    const sessions = await adapter.listSessions();
+    expect(sessions.filter((session) => session.id === "session-existing"))
+      .toEqual([
+        expect.objectContaining({
+          title: "Live existing work",
+          status: "running",
+        }),
+      ]);
+    expect(sessions).toContainEqual(expect.objectContaining({
+      id: "session-live-only",
+      status: "waiting",
+    }));
+
+    await expect(adapter.loadSessionHistory("session-live-only")).resolves
+      .toEqual([
+        expect.objectContaining({
+          id: "ahp-history",
+          text: "Live history",
+        }),
+      ]);
+    await adapter.sendMessage({
+      sessionId: "session-existing",
+      message: "Queue this",
+    });
+    expect(agentHostProvider.sent).toEqual([{
+      sessionId: "session-existing",
+      message: "Queue this",
+    }]);
+
+    agentHostProvider.disconnect("session-existing");
+    expect(events.at(-1)).toEqual({
+      type: "session.updated",
+      session: expect.objectContaining({
+        id: "session-existing",
+        title: "Existing work",
+        status: "idle",
+      }),
+    });
+    await adapter.sendMessage({
+      sessionId: "session-existing",
+      message: "Continue from disk",
+    });
+    expect(client.existingSession.sent).toEqual(["Continue from disk"]);
+
+    agentHostProvider.disconnect("session-live-only");
+    expect(events.at(-1)).toEqual({
+      type: "session.updated",
+      session: expect.objectContaining({
+        id: "session-live-only",
+        status: "gone",
+      }),
+    });
+
+    await adapter.close();
+    expect(agentHostProvider.closed).toBe(true);
   });
 });
