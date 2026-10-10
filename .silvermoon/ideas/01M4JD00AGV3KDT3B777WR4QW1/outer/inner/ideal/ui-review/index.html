@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session-first Relay 工作区评审</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #eef2f6;
+      --surface: #fbfcfd;
+      --ink: #15202b;
+      --muted: #657184;
+      --border: #d7dee8;
+      --primary: #3859e9;
+      --primary-soft: #e5eaff;
+      --online: #2f9b77;
+      --warning: #a76518;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: "Segoe UI Variable", "Aptos", ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    a, button { font: inherit; }
+    a:focus-visible, button:focus-visible, iframe:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--primary) 32%, transparent);
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 10;
+      padding: 8px 12px;
+      color: #fff;
+      background: var(--ink);
+      border-radius: 7px;
+      transform: translateY(-150%);
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .page-header,
+    main,
+    footer {
+      width: min(1500px, calc(100% - 40px));
+      margin-inline: auto;
+    }
+
+    .page-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 28px;
+      align-items: end;
+      padding: 28px 0 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .page-header h1 {
+      max-width: 24ch;
+      margin: 0;
+      font-size: clamp(25px, 3vw, 36px);
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+      text-wrap: balance;
+    }
+    .page-header p {
+      max-width: 72ch;
+      margin: 9px 0 0;
+      color: var(--muted);
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .status::before {
+      width: 8px;
+      height: 8px;
+      background: var(--warning);
+      border-radius: 50%;
+      content: "";
+    }
+
+    main { padding: 22px 0 38px; }
+    .decision {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.05fr);
+      gap: 28px;
+      align-items: center;
+      padding: 18px 0;
+      border-block: 1px solid var(--border);
+    }
+    .decision-label {
+      margin: 0 0 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    h2 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.35;
+      letter-spacing: -0.015em;
+      text-wrap: balance;
+    }
+    .deltas {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .deltas li {
+      padding: 5px 9px;
+      color: #253b9e;
+      background: var(--primary-soft);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .scenarios { margin-top: 18px; }
+    .tabs {
+      display: flex;
+      gap: 3px;
+      width: fit-content;
+      max-width: 100%;
+      overflow-x: auto;
+      padding: 3px;
+      background: #e4e9ef;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+    }
+    .tab {
+      min-height: 37px;
+      flex: 0 0 auto;
+      padding: 8px 13px;
+      color: var(--muted);
+      border-radius: 6px;
+      font-weight: 650;
+      text-decoration: none;
+    }
+    .tab[aria-selected="true"] {
+      color: var(--ink);
+      background: var(--surface);
+      box-shadow: 0 1px 3px rgb(21 32 43 / 12%);
+    }
+    .frame-shell {
+      margin-top: 12px;
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 20px 55px rgb(21 32 43 / 7%);
+    }
+    iframe {
+      display: block;
+      width: 100%;
+      min-height: 760px;
+      border: 0;
+    }
+
+    .review-end {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, auto);
+      gap: 24px;
+      align-items: center;
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+    }
+    .review-end p { margin: 0; color: var(--muted); }
+    .review-end strong { color: var(--ink); text-align: right; }
+    .source { color: var(--primary); }
+    footer { padding-bottom: 28px; color: var(--muted); font-size: 12px; }
+
+    @media (max-width: 760px) {
+      .page-header,
+      main,
+      footer { width: min(100% - 24px, 1500px); }
+      .page-header,
+      .decision,
+      .review-end { grid-template-columns: 1fr; }
+      .page-header { align-items: start; }
+      .status { white-space: normal; }
+      .deltas { justify-content: flex-start; }
+      .tabs {
+        display: grid;
+        width: 100%;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        overflow: visible;
+      }
+      .tab {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        text-align: center;
+      }
+      .review-end strong { text-align: left; }
+      iframe { min-height: 1060px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#review">跳到评审内容</a>
+  <header class="page-header">
+    <div>
+      <h1>Session-first Relay 工作区</h1>
+      <p>把当前 Device-first 三栏控制台重组为固定视口的 Session 导航与内容工作区，让标题、状态、历史和输入保持在同一上下文中。</p>
+    </div>
+    <span class="status">说明性评审材料</span>
+  </header>
+
+  <main id="review">
+    <section class="decision" aria-labelledby="decision-title">
+      <div>
+        <p class="decision-label">待决定</p>
+        <h2 id="decision-title">是否批准以 Session 为一级对象的两行两列工作区，作为本期 Relay UX 改造方向？</h2>
+      </div>
+      <ul class="deltas" aria-label="关键变化">
+        <li>Session 取代 Device 成为一级导航</li>
+        <li>标题与状态进入固定顶栏</li>
+        <li>内容滚动，输入框固定在底部</li>
+      </ul>
+    </section>
+
+    <section class="scenarios" aria-label="评审场景">
+      <nav class="tabs" role="tablist" aria-label="选择场景">
+        <a class="tab" id="tab-desktop" role="tab" aria-selected="true" href="scenarios/01-session-workspace.html" target="scenario-frame">桌面工作区</a>
+        <a class="tab" id="tab-mobile" role="tab" aria-selected="false" href="scenarios/02-mobile-session.html" target="scenario-frame">窄屏 Session</a>
+      </nav>
+      <div class="frame-shell">
+        <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-session-workspace.html" title="桌面工作区对比"></iframe>
+      </div>
+    </section>
+
+    <section class="review-end" aria-label="评审结论">
+      <p>本材料仅用于说明视觉与信息架构，不是生产 UI 或规范性行为契约。<a class="source" href="../Idea.md">查看规范方向卡</a></p>
+      <strong>是否批准这套 Session-first 布局方向进入实施细化？</strong>
+    </section>
+  </main>
+
+  <footer>边界：每个 Agent Session 仍只属于一个 Device；可选文件 / Review Inspector 仅预留扩展空间，不在本期实现。</footer>
+
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    const tabs = [...document.querySelectorAll(".tab")];
+
+    function selectTab(tab) {
+      tabs.forEach((candidate) => {
+        candidate.setAttribute("aria-selected", String(candidate === tab));
+      });
+      frame.title = `${tab.textContent.trim()}对比`;
+    }
+
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => selectTab(tab));
+      tab.addEventListener("keydown", (event) => {
+        let nextIndex = null;
+        if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+        if (event.key === "ArrowLeft") {
+          nextIndex = (index - 1 + tabs.length) % tabs.length;
+        }
+        if (event.key === "Home") nextIndex = 0;
+        if (event.key === "End") nextIndex = tabs.length - 1;
+        if (nextIndex === null) return;
+        event.preventDefault();
+        tabs[nextIndex].click();
+        tabs[nextIndex].focus();
+      });
+    });
+
+    window.addEventListener("message", (event) => {
+      if (
+        event.source !== frame.contentWindow
+        || event.data?.type !== "ui-review:height"
+      ) return;
+      frame.style.height = `${Math.max(360, Number(event.data.height) || 0)}px`;
+    });
+  </script>
+</body>
+</html>

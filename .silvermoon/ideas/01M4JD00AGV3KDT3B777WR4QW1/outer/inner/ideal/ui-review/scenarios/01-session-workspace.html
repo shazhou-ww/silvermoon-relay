@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>桌面 Session 工作区</title>
+  <link rel="stylesheet" href="review.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>桌面 Session 工作区</h1>
+      <p>同一账户、2 个 Device、3 个 Session；当前打开“Relay UX redesign”。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>Device 降为 Session 标签</li>
+      <li>输入框固定在内容底部</li>
+      <li>账户功能进入右上菜单</li>
+    </ul>
+  </header>
+
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label">
+        <strong id="before-title">Before</strong>
+        <span>当前 Device → Session → Activity 三栏</span>
+      </header>
+      <div class="product-surface">
+        <div class="app-shot legacy-page">
+          <header class="legacy-page-header">
+            <div>
+              <small>● Relay control room</small>
+              <h2>Lee’s Relay</h2>
+            </div>
+            <button class="legacy-signout" type="button">Sign out</button>
+          </header>
+
+          <div class="legacy-control">
+            <aside class="legacy-column">
+              <div class="legacy-column-head">
+                <strong>Devices <span class="legacy-count">2</span></strong>
+                <p>Connectors currently known to this account.</p>
+              </div>
+              <div class="legacy-list">
+                <div class="legacy-device selected">
+                  <div class="legacy-device-row">
+                    <i class="legacy-dot"></i>
+                    <strong class="truncate">Studio laptop</strong>
+                  </div>
+                  <span>GitHub Copilot · 3</span>
+                </div>
+                <div class="legacy-device">
+                  <div class="legacy-device-row">
+                    <i class="legacy-dot offline"></i>
+                    <strong class="truncate">Home desktop</strong>
+                  </div>
+                  <span>GitHub Copilot · 1</span>
+                </div>
+              </div>
+            </aside>
+
+            <section class="legacy-column">
+              <div class="legacy-column-head">
+                <strong>Sessions <span class="legacy-count">3</span></strong>
+                <p>Studio laptop</p>
+              </div>
+              <div class="legacy-form">
+                <div class="legacy-input">Optional title</div>
+                <div class="legacy-input prompt">What should Copilot work on?</div>
+                <button class="legacy-create" type="button">Create session</button>
+              </div>
+              <div class="legacy-list">
+                <div class="legacy-session selected">
+                  <div class="legacy-session-title">
+                    <strong class="truncate">Relay UX redesign</strong>
+                    <span class="pill">running</span>
+                  </div>
+                  <span>Map the current user journey and key states</span>
+                  <time>Oct 10, 3:33 PM</time>
+                </div>
+                <div class="legacy-session">
+                  <div class="legacy-session-title">
+                    <strong class="truncate">Please approve the pending tool call</strong>
+                    <span class="pill waiting">waiting</span>
+                  </div>
+                  <span>Please approve the pending tool call</span>
+                  <time>Oct 9, 3:33 PM</time>
+                </div>
+                <div class="legacy-session">
+                  <div class="legacy-session-title">
+                    <strong class="truncate">Fix connector reconnect</strong>
+                    <span class="pill failed">failed</span>
+                  </div>
+                  <span>Connection dropped while syncing history</span>
+                  <time>Oct 8, 3:33 PM</time>
+                </div>
+              </div>
+            </section>
+
+            <section class="legacy-activity">
+              <div class="legacy-column-head">
+                <strong>Relay UX redesign <span class="pill">running</span></strong>
+                <p>s1</p>
+              </div>
+              <div class="legacy-activity-body">
+                <article class="legacy-event">
+                  <strong>You</strong>
+                  <p>Map the current Relay UX.</p>
+                </article>
+                <article class="legacy-event">
+                  <strong>Copilot</strong>
+                  <p>Reading the Web UI and current product ideas.</p>
+                </article>
+                <article class="legacy-event tool">
+                  <strong>Tool</strong>
+                  <p>Read apps/web/src/App.tsx</p>
+                </article>
+              </div>
+              <div class="legacy-composer">
+                <div class="legacy-input">Send a follow-up to Copilot</div>
+                <button type="button">Send</button>
+              </div>
+            </section>
+          </div>
+          <div class="legacy-settings">Connection and account settings ＋</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label">
+        <strong id="after-title">After</strong>
+        <span>拟议 Session-first 固定视口工作区</span>
+      </header>
+      <div class="product-surface">
+        <div class="app-shot workspace-shell">
+          <header class="brand-cell">
+            <span class="relay-mark" aria-hidden="true"></span>
+            <span>Silvermoon Relay</span>
+          </header>
+
+          <header class="session-bar">
+            <div class="session-bar-title">
+              <strong>Relay UX redesign</strong>
+              <span class="pill">Running</span>
+            </div>
+            <div class="user-control">
+              <span>Lee</span>
+              <span class="avatar">LS</span>
+            </div>
+          </header>
+
+          <aside class="session-nav">
+            <div class="nav-head">
+              <strong>Sessions</strong>
+              <button class="new-session" type="button" aria-label="Create session">+</button>
+            </div>
+            <div class="session-search">Search sessions…</div>
+            <div class="filter-row">
+              <button class="filter-chip active" type="button">All 3</button>
+              <button class="filter-chip" type="button">Needs attention 1</button>
+            </div>
+            <div class="session-list">
+              <article class="session-row selected">
+                <div class="session-row-title">
+                  <strong>Relay UX redesign</strong>
+                  <span class="pill">Running</span>
+                </div>
+                <p>Map the current user journey and key states</p>
+                <div class="session-row-meta">
+                  <span class="device-tag">Studio laptop</span>
+                  <time>Now</time>
+                </div>
+              </article>
+              <article class="session-row">
+                <div class="session-row-title">
+                  <strong>Please approve the pending tool call</strong>
+                  <span class="pill waiting">Waiting</span>
+                </div>
+                <p>Please approve the pending tool call</p>
+                <div class="session-row-meta">
+                  <span class="device-tag">Studio laptop</span>
+                  <time>1d</time>
+                </div>
+              </article>
+              <article class="session-row">
+                <div class="session-row-title">
+                  <strong>Fix connector reconnect</strong>
+                  <span class="pill failed">Failed</span>
+                </div>
+                <p>Connection dropped while syncing history</p>
+                <div class="session-row-meta">
+                  <span class="device-tag offline">Home desktop</span>
+                  <time>2d</time>
+                </div>
+              </article>
+            </div>
+          </aside>
+
+          <section class="workspace">
+            <div class="transcript">
+              <article class="message user">
+                <div class="message-meta">You · 3:31 PM</div>
+                <div class="message-bubble">Map the current Relay UX.</div>
+              </article>
+              <article class="message assistant">
+                <div class="message-meta">
+                  <span class="device-tag">Copilot on Studio laptop</span>
+                  <span>3:32 PM</span>
+                </div>
+                <div class="message-bubble">Reading the Web UI and current product ideas.</div>
+              </article>
+              <div class="activity-group">
+                <span class="activity-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <strong>3 activities</strong> · Read App.tsx, inspected styles, mapped states
+              </div>
+              <article class="message assistant">
+                <div class="message-meta">
+                  <span class="device-tag">Copilot on Studio laptop</span>
+                  <span>Now</span>
+                </div>
+                <div class="message-bubble">I found the main friction: Device is currently the first navigation layer, while the user’s ongoing work lives in Sessions.</div>
+              </article>
+            </div>
+            <div class="composer">
+              <div class="composer-box">
+                <div class="composer-placeholder">Continue this session…</div>
+                <button class="send-button" type="button" aria-label="Send message">↑</button>
+              </div>
+              <p class="composer-hint">Sending to Studio laptop</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({
+        type: "ui-review:height",
+        height: document.documentElement.scrollHeight,
+      }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+    window.addEventListener("resize", reportHeight);
+  </script>
+</body>
+</html>
