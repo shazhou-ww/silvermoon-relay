@@ -105,6 +105,11 @@ textarea:focus-visible {
   min-height: 720px;
   place-items: center;
 }
+.state.after .product-surface:not(.mobile) {
+  min-height: 0;
+  padding: 0;
+  background: var(--surface);
+}
 
 .app-shot {
   height: 556px;
@@ -114,6 +119,12 @@ textarea:focus-visible {
   border: 1px solid #cdd5df;
   border-radius: 11px;
   box-shadow: 0 16px 32px rgb(28 41 58 / 10%);
+}
+.state.after .app-shot {
+  height: 580px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 .muted { color: var(--muted); }
 .truncate {
@@ -778,6 +789,7 @@ textarea:focus-visible {
   .product-surface { min-height: 500px; }
   .product-surface.mobile { min-height: 710px; }
   .app-shot { height: 476px; }
+  .state.after .app-shot { height: 500px; }
   .legacy-page { padding: 9px; }
   .legacy-page-header { min-height: 39px; }
   .legacy-control { min-height: 360px; }
