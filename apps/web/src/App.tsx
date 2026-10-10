@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -182,6 +182,7 @@ function App() {
   const [sessionTitle, setSessionTitle] = useState("")
   const [sessionPrompt, setSessionPrompt] = useState("")
   const [followUp, setFollowUp] = useState("")
+  const historyRequests = useRef(new Set<string>())
 
   const selectConnector = useCallback((items: Connector[]) => {
     setSelectedConnectorId((current) => {
@@ -282,6 +283,13 @@ function App() {
     ),
   )
 
+  const selectedConnector = useMemo(
+    () => connectors.find((item) => item.id === selectedConnectorId) ?? null,
+    [connectors, selectedConnectorId],
+  )
+  const canSyncSelectedHistory = selectedConnector?.status === "online"
+    && selectedConnector.capabilities.streamEvents
+
   useEffect(() => {
     if (
       !account
@@ -290,18 +298,48 @@ function App() {
       || !selectedSessionAvailable
     ) return
     let active = true
+    let after = -1
+    let loadedEvents: AgentSessionEvent[] = []
     const connectorId = encodeURIComponent(selectedConnectorId)
     const sessionId = encodeURIComponent(selectedSessionId)
+    const requestKey = `${selectedConnectorId}:${selectedSessionId}`
+    const requestHistory = async () => {
+      if (
+        !canSyncSelectedHistory
+        || historyRequests.current.has(requestKey)
+      ) {
+        return
+      }
+      historyRequests.current.add(requestKey)
+      try {
+        await api(
+          `/api/connectors/${connectorId}/sessions/${sessionId}/events/sync`,
+          { method: "POST" },
+        )
+      } catch (caught) {
+        historyRequests.current.delete(requestKey)
+        if (active && caught instanceof Error) setError(caught.message)
+      }
+    }
     const poll = async () => {
       try {
-        const result = await api<{ events: AgentSessionEvent[] }>(
-          `/api/connectors/${connectorId}/sessions/${sessionId}/events`,
+        const result = await api<{
+          events: AgentSessionEvent[]
+          nextAfter: number
+        }>(
+          `/api/connectors/${connectorId}/sessions/${sessionId}/events?after=${after}`,
         )
-        if (active) setEvents(result.events)
+        if (!active) return
+        if (result.events.length > 0) {
+          loadedEvents = [...loadedEvents, ...result.events]
+          after = result.nextAfter
+        }
+        setEvents(loadedEvents)
       } catch (caught) {
         if (active && caught instanceof Error) setError(caught.message)
       }
     }
+    void requestHistory()
     void poll()
     const timer = window.setInterval(() => void poll(), 2_000)
     return () => {
@@ -310,15 +348,12 @@ function App() {
     }
   }, [
     account,
+    canSyncSelectedHistory,
     selectedConnectorId,
     selectedSessionAvailable,
     selectedSessionId,
   ])
 
-  const selectedConnector = useMemo(
-    () => connectors.find((item) => item.id === selectedConnectorId) ?? null,
-    [connectors, selectedConnectorId],
-  )
   const visibleAgentSessions = useMemo(
     () => selectedConnectorId
       ? agentSessions.filter(
@@ -754,7 +789,9 @@ function App() {
             {selectedAgentSession && visibleEvents.length === 0 && (
               <div className="flex h-full min-h-64 items-center justify-center">
                 <p className="text-sm text-muted-foreground">
-                  Waiting for activity from this session.
+                  {canSyncSelectedHistory
+                    ? "Loading session history from this device."
+                    : "No session activity has been synced."}
                 </p>
               </div>
             )}

@@ -176,6 +176,19 @@ export class SilvermoonConnector {
         });
         return;
       }
+      if (command.type === "session.history") {
+        const events = await this.options.adapter.loadSessionHistory(
+          command.sessionId,
+        );
+        for (const event of events) {
+          await client.sessionEvent.mutate(event);
+        }
+        await client.commandCompleted.mutate({
+          commandId: command.commandId,
+          outcome: "succeeded",
+        });
+        return;
+      }
       if (command.type === "session.create") {
         const session = await this.options.adapter.createSession({
           prompt: command.prompt,

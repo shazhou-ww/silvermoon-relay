@@ -17,6 +17,7 @@ import type { AgentAdapter, AgentAdapterEvent } from "./adapter.js";
 interface CopilotSessionHandle {
   readonly sessionId: string;
   send(options: { prompt: string }): Promise<string>;
+  getEvents(): Promise<SessionEvent[]>;
   on(handler: (event: SessionEvent) => void): () => void;
   disconnect(): Promise<void>;
 }
@@ -55,6 +56,10 @@ function boundedText(
 ): string | null {
   const normalized = value?.trim();
   return normalized ? normalized.slice(0, maxLength) : null;
+}
+
+function boundedEventText(value: string): string {
+  return value.slice(0, 65_536);
 }
 
 function metadataSummary(metadata: SessionMetadata): AgentSession {
@@ -138,23 +143,36 @@ export class CopilotAgentAdapter implements AgentAdapter {
     message: string;
   }): Promise<void> {
     await this.ensureStarted();
-    let active = this.active.get(input.sessionId);
-    if (!active) {
-      const metadata = await this.client.listSessions();
-      const found = metadata.find((item) => item.sessionId === input.sessionId);
-      if (!found) throw new Error(`Copilot session not found: ${input.sessionId}`);
-      const session = await this.client.resumeSession(
-        input.sessionId,
-        this.resumeConfig(),
-      );
-      active = this.attach(session, metadataSummary(found));
-    }
+    const active = await this.activeSession(input.sessionId);
     this.updateSummary(active, {
       status: "running",
       updatedAt: new Date().toISOString(),
       lastMessagePreview: input.message.slice(0, 512),
     });
     await active.session.send({ prompt: input.message });
+  }
+
+  async loadSessionHistory(
+    sessionId: string,
+  ): Promise<AgentSessionEvent[]> {
+    await this.ensureStarted();
+    const active = await this.activeSession(sessionId);
+    const result: AgentSessionEvent[] = [];
+    let previousSequence = 0;
+    for (const event of await active.session.getEvents()) {
+      const mapped = this.mapCopilotEvent(active, event, false);
+      if (!mapped) continue;
+      const sequence = sequenceFor(event.timestamp, previousSequence);
+      previousSequence = sequence;
+      result.push({
+        ...mapped,
+        sessionId,
+        sequence,
+      });
+    }
+    active.lastSequence = Math.max(active.lastSequence, previousSequence);
+    this.emit({ type: "session.updated", session: active.summary });
+    return result;
   }
 
   subscribe(listener: (event: AgentAdapterEvent) => void): () => void {
@@ -179,6 +197,19 @@ export class CopilotAgentAdapter implements AgentAdapter {
     if (this.started) return;
     await this.client.start();
     this.started = true;
+  }
+
+  private async activeSession(sessionId: string): Promise<ActiveSession> {
+    const existing = this.active.get(sessionId);
+    if (existing) return existing;
+    const metadata = await this.client.listSessions();
+    const found = metadata.find((item) => item.sessionId === sessionId);
+    if (!found) throw new Error(`Copilot session not found: ${sessionId}`);
+    const session = await this.client.resumeSession(
+      sessionId,
+      this.resumeConfig(),
+    );
+    return this.attach(session, metadataSummary(found));
   }
 
   private sessionConfig(): SessionConfig {
@@ -223,6 +254,25 @@ export class CopilotAgentAdapter implements AgentAdapter {
     active: ActiveSession,
     event: SessionEvent,
   ): void {
+    const sessionEvent = this.mapCopilotEvent(active, event, true);
+    if (!sessionEvent) return;
+    const sequence = sequenceFor(event.timestamp, active.lastSequence);
+    active.lastSequence = sequence;
+    this.emit({
+      type: "session.event",
+      event: {
+        ...sessionEvent,
+        sessionId: active.session.sessionId,
+        sequence,
+      },
+    });
+  }
+
+  private mapCopilotEvent(
+    active: ActiveSession,
+    event: SessionEvent,
+    publishSummary: boolean,
+  ): Omit<AgentSessionEvent, "sequence" | "sessionId"> | null {
     const updatedAt = event.timestamp;
     let status: SessionStatus | undefined;
     let sessionEvent: Omit<AgentSessionEvent, "sequence" | "sessionId"> | null =
@@ -235,7 +285,7 @@ export class CopilotAgentAdapter implements AgentAdapter {
           id: event.id,
           type: "message",
           role: "user",
-          text: event.data.content,
+          text: boundedEventText(event.data.content),
           createdAt: event.timestamp,
         };
         break;
@@ -244,7 +294,7 @@ export class CopilotAgentAdapter implements AgentAdapter {
           id: event.id,
           type: "message",
           role: "assistant",
-          text: event.data.content,
+          text: boundedEventText(event.data.content),
           createdAt: event.timestamp,
         };
         break;
@@ -252,7 +302,7 @@ export class CopilotAgentAdapter implements AgentAdapter {
         sessionEvent = {
           id: event.id,
           type: "activity",
-          text: event.data.intent,
+          text: boundedEventText(event.data.intent),
           createdAt: event.timestamp,
         };
         break;
@@ -294,7 +344,7 @@ export class CopilotAgentAdapter implements AgentAdapter {
         sessionEvent = {
           id: event.id,
           type: "error",
-          text: event.data.message,
+          text: boundedEventText(event.data.message),
           data: { errorType: event.data.errorType },
           createdAt: event.timestamp,
         };
@@ -313,36 +363,32 @@ export class CopilotAgentAdapter implements AgentAdapter {
         this.updateSummary(active, {
           title: boundedText(event.data.title, 256),
           updatedAt,
-        });
-        return;
+        }, publishSummary);
+        return null;
       case "session.shutdown":
         status = "closed";
         break;
       default:
-        return;
+        return null;
     }
 
-    if (status) this.updateSummary(active, { status, updatedAt });
-    else this.updateSummary(active, { updatedAt });
-    if (!sessionEvent) return;
-    const sequence = sequenceFor(event.timestamp, active.lastSequence);
-    active.lastSequence = sequence;
-    this.emit({
-      type: "session.event",
-      event: {
-        ...sessionEvent,
-        sessionId: active.session.sessionId,
-        sequence,
-      },
-    });
+    if (status) {
+      this.updateSummary(active, { status, updatedAt }, publishSummary);
+    } else {
+      this.updateSummary(active, { updatedAt }, publishSummary);
+    }
+    return sessionEvent;
   }
 
   private updateSummary(
     active: ActiveSession,
     updates: Partial<AgentSession>,
+    publish = true,
   ): void {
     active.summary = { ...active.summary, ...updates };
-    this.emit({ type: "session.updated", session: active.summary });
+    if (publish) {
+      this.emit({ type: "session.updated", session: active.summary });
+    }
   }
 
   private emit(event: AgentAdapterEvent): void {

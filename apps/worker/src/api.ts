@@ -6,6 +6,7 @@ import {
   PROTOCOL_VERSION,
   sendSessionMessageCommandSchema,
   sessionIdSchema,
+  syncSessionHistoryCommandSchema,
   type ConnectorCommand,
 } from "@silvermoon-relay/protocol";
 import {
@@ -132,7 +133,9 @@ async function dispatchCommand(
       userId,
       connectorId,
       command.type,
-      command.type === "session.message" ? command.sessionId : null,
+      command.type === "session.message" || command.type === "session.history"
+        ? command.sessionId
+        : null,
       JSON.stringify(command),
     )
     .run();
@@ -399,6 +402,66 @@ export async function handleApi(
         { status: delivered ? 202 : 409 },
       );
     }
+  }
+
+  const sessionHistorySyncMatch =
+    /^\/api\/connectors\/([^/]+)\/sessions\/([^/]+)\/events\/sync$/u.exec(path);
+  if (request.method === "POST" && sessionHistorySyncMatch) {
+    const connectorId = pathValue(sessionHistorySyncMatch[1]);
+    const agentSessionId = pathValue(sessionHistorySyncMatch[2]);
+    const parsedConnectorId = connectorIdSchema.safeParse(connectorId);
+    const parsedSessionId = sessionIdSchema.safeParse(agentSessionId);
+    if (!parsedConnectorId.success || !parsedSessionId.success) {
+      return response(
+        request,
+        env,
+        { error: "invalid-session-route" },
+        { status: 400 },
+      );
+    }
+    const owned = await env.DB.prepare(
+      `SELECT 1 FROM agent_sessions
+       WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3`,
+    )
+      .bind(
+        session.userId,
+        parsedConnectorId.data,
+        parsedSessionId.data,
+      )
+      .first();
+    if (!owned) {
+      return response(
+        request,
+        env,
+        { error: "session-not-found" },
+        { status: 404 },
+      );
+    }
+    const command = syncSessionHistoryCommandSchema.parse({
+      type: "session.history",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId: crypto.randomUUID(),
+      sessionId: parsedSessionId.data,
+    });
+    const delivered = await dispatchCommand(
+      env,
+      session.userId,
+      parsedConnectorId.data,
+      command,
+    );
+    return response(
+      request,
+      env,
+      {
+        command: {
+          id: command.commandId,
+          type: command.type,
+          status: delivered ? "sent" : "failed",
+        },
+        ...(delivered ? {} : { error: "connector-offline" }),
+      },
+      { status: delivered ? 202 : 409 },
+    );
   }
 
   const sessionEventsMatch =

@@ -622,6 +622,55 @@ describe("relay identity and token service", () => {
       return connectors.find((item) => item.id === "studio-laptop");
     }).toMatchObject({ status: "online", sessionCount: 1 });
 
+    const historySync = await SELF.fetch(
+      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-existing/events/sync",
+      {
+        method: "POST",
+        headers: sessionHeaders(session),
+      },
+    );
+    expect(historySync.status).toBe(202);
+    const historyCommand = await waitForData(
+      3,
+      (value) =>
+        !!value
+        && typeof value === "object"
+        && "type" in value
+        && value.type === "session.history",
+    ) as Record<string, unknown>;
+    expect(historyCommand).toMatchObject({
+      type: "session.history",
+      sessionId: "session-existing",
+    });
+    const historyCommandId = String(historyCommand.commandId);
+    sendRpc(4, "mutation", "commandAccepted", {
+      commandId: historyCommandId,
+    });
+    sendRpc(5, "mutation", "sessionEvent", {
+      id: "history-event-1",
+      sessionId: "session-existing",
+      sequence: 1,
+      type: "message",
+      role: "assistant",
+      text: "Loaded from local history.",
+      createdAt: now,
+    });
+    await waitForData(5);
+    sendRpc(6, "mutation", "commandCompleted", {
+      commandId: historyCommandId,
+      outcome: "succeeded",
+    });
+    await waitForData(6);
+    const historyEvents = await SELF.fetch(
+      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-existing/events",
+      { headers: sessionHeaders(session) },
+    );
+    expect(
+      await historyEvents.json<{ events: Array<{ id: string }> }>(),
+    ).toMatchObject({
+      events: [expect.objectContaining({ id: "history-event-1" })],
+    });
+
     const create = await SELF.fetch(
       "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions",
       {
@@ -647,10 +696,10 @@ describe("relay identity and token service", () => {
       title: "Investigate CI",
     });
     const createCommandId = String(createCommand.commandId);
-    sendRpc(4, "mutation", "commandAccepted", {
+    sendRpc(7, "mutation", "commandAccepted", {
       commandId: createCommandId,
     });
-    sendRpc(5, "mutation", "commandCompleted", {
+    sendRpc(8, "mutation", "commandCompleted", {
       commandId: createCommandId,
       outcome: "succeeded",
       session: {
@@ -662,7 +711,7 @@ describe("relay identity and token service", () => {
         lastMessagePreview: "Find the failing check and fix it.",
       },
     });
-    await waitForData(5);
+    await waitForData(8);
 
     await expect.poll(async () => {
       const response = await SELF.fetch(
@@ -694,7 +743,7 @@ describe("relay identity and token service", () => {
       sessionId: "session-new",
       message: "Show me the test output.",
     });
-    sendRpc(6, "mutation", "sessionEvent", {
+    sendRpc(9, "mutation", "sessionEvent", {
         id: "event-1",
         sessionId: "session-new",
         sequence: 1,
@@ -703,7 +752,7 @@ describe("relay identity and token service", () => {
         text: "The worker type generation check is stale.",
         createdAt: new Date().toISOString(),
     });
-    await waitForData(6);
+    await waitForData(9);
 
     await expect.poll(async () => {
       const response = await SELF.fetch(
