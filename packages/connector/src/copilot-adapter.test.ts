@@ -13,7 +13,10 @@ class FakeSession {
   readonly sent: string[] = [];
   private listener: ((event: SessionEvent) => void) | null = null;
 
-  constructor(readonly sessionId: string) {}
+  constructor(
+    readonly sessionId: string,
+    private readonly history: SessionEvent[] = [],
+  ) {}
 
   async send(options: { prompt: string }): Promise<string> {
     this.sent.push(options.prompt);
@@ -27,6 +30,10 @@ class FakeSession {
     };
   }
 
+  async getEvents(): Promise<SessionEvent[]> {
+    return this.history;
+  }
+
   async disconnect(): Promise<void> {}
 
   emit(event: SessionEvent): void {
@@ -36,6 +43,29 @@ class FakeSession {
 
 class FakeClient {
   readonly session = new FakeSession("session-new");
+  readonly existingSession = new FakeSession("session-existing", [
+    {
+      id: "history-user",
+      parentId: null,
+      timestamp: "2026-10-10T00:00:00.000Z",
+      type: "user.message",
+      data: { content: "Existing question" },
+    } as SessionEvent,
+    {
+      id: "history-assistant",
+      parentId: "history-user",
+      timestamp: "2026-10-10T00:00:01.000Z",
+      type: "assistant.message",
+      data: { content: "Existing answer" },
+    } as SessionEvent,
+    {
+      id: "history-idle",
+      parentId: "history-assistant",
+      timestamp: "2026-10-10T00:00:02.000Z",
+      type: "session.idle",
+      data: {},
+    } as SessionEvent,
+  ]);
   started = false;
 
   async start(): Promise<void> {
@@ -73,6 +103,9 @@ class FakeClient {
     sessionId: string,
     _config: ResumeSessionConfig,
   ): Promise<FakeSession> {
+    if (sessionId === this.existingSession.sessionId) {
+      return this.existingSession;
+    }
     return new FakeSession(sessionId);
   }
 }
@@ -97,6 +130,32 @@ describe("CopilotAgentAdapter", () => {
         title: "x".repeat(256),
         lastMessagePreview: "x".repeat(512),
       });
+    const history = await adapter.loadSessionHistory("session-existing");
+    expect(history).toEqual([
+      expect.objectContaining({
+        id: "history-user",
+        sessionId: "session-existing",
+        role: "user",
+        text: "Existing question",
+      }),
+      expect.objectContaining({
+        id: "history-assistant",
+        sessionId: "session-existing",
+        role: "assistant",
+        text: "Existing answer",
+      }),
+      expect.objectContaining({
+        id: "history-idle",
+        sessionId: "session-existing",
+        status: "idle",
+      }),
+    ]);
+    expect(
+      history.every(
+        (event, index) =>
+          index === 0 || history[index - 1].sequence < event.sequence,
+      ),
+    ).toBe(true);
     const created = await adapter.createSession({
       title: "Investigate CI",
       prompt: "Fix the failing check.",

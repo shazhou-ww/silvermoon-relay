@@ -21,6 +21,7 @@ export interface AgentAdapter {
     sessionId: string;
     message: string;
   }): Promise<void>;
+  loadSessionHistory(sessionId: string): Promise<AgentSessionEvent[]>;
   subscribe(listener: (event: AgentAdapterEvent) => void): () => void;
   close?(): Promise<void> | void;
 }

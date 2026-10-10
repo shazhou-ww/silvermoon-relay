@@ -79,10 +79,16 @@ export const sendSessionMessageCommandSchema = commandBaseSchema.extend({
   message: z.string().trim().min(1).max(32_768),
 });
 
+export const syncSessionHistoryCommandSchema = commandBaseSchema.extend({
+  type: z.literal("session.history"),
+  sessionId: sessionIdSchema,
+});
+
 export const connectorCommandSchema = z.discriminatedUnion("type", [
   listSessionsCommandSchema,
   createSessionCommandSchema,
   sendSessionMessageCommandSchema,
+  syncSessionHistoryCommandSchema,
 ]);
 
 export type ConnectorId = z.infer<typeof connectorIdSchema>;

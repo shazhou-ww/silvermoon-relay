@@ -40,6 +40,14 @@ describe("relay protocol", () => {
         prompt: " ",
       }).success,
     ).toBe(false);
+    expect(
+      connectorCommandSchema.safeParse({
+        type: "session.history",
+        protocolVersion: PROTOCOL_VERSION,
+        commandId: crypto.randomUUID(),
+        sessionId: "session-existing",
+      }).success,
+    ).toBe(true);
   });
 
   it("validates session activity observations", () => {
