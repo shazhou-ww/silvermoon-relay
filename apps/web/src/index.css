@@ -755,6 +755,31 @@ textarea:focus-visible {
   content: "·";
 }
 
+.transcript-tool-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font-size: inherit;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.2rem;
+}
+
+.transcript-tool-toggle:hover,
+.transcript-tool-toggle[aria-pressed="true"] {
+  color: var(--foreground);
+  text-decoration-color: currentColor;
+}
+
+.transcript-tool-toggle > svg {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
 .conversation-message {
   width: fit-content;
   max-width: min(46rem, 86%);
@@ -902,6 +927,10 @@ textarea:focus-visible {
   max-width: 28rem;
   font-size: 0.78rem;
   line-height: 1.5;
+}
+
+.transcript-empty-filtered {
+  min-height: 12rem;
 }
 
 .session-composer-shell {

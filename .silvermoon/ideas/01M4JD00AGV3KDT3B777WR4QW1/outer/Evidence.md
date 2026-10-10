@@ -2,7 +2,9 @@
 
 验证日期：2026-10-10
 
-## D-S01 / D-AC01：已完成
+> 以下发布结果对应上一版已接受的 Implementation。当前 Implementation 增加 tool message 默认隐藏行为后需要重新发布和验证，因此不能作为当前 Deployment gate 的完成证据。
+
+## D-S01 / D-AC01：历史证据
 
 - 已将 accepted primary `a4ed79c4ba14562c2a3b39646bbc2d64c5fff7a8` 通过既有 merge 发布模式晋级为 release commit `4b9b1e697e53765d8b374f88452cf38a6d0c2d6a`；合并后的 Git tree 与该 primary 完全一致。
 - GitHub Actions [Check and deploy run 38040905332](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38040905332) 成功完成。

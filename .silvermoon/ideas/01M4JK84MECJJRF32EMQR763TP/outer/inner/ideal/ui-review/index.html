@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VS Code 参考式 Agent 消息流方向评审</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #eef2f6;
+      --surface: #fbfcfd;
+      --ink: #17212b;
+      --muted: #687487;
+      --border: #d8dfe8;
+      --primary: #3454d1;
+      --primary-soft: #e3e8fb;
+      --warning: #a86618;
+    }
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: "Aptos", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    a, iframe { border-radius: 4px; }
+    a:focus-visible, iframe:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--primary) 32%, transparent);
+      outline-offset: 3px;
+    }
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 10;
+      padding: 8px 12px;
+      color: #fff;
+      background: var(--ink);
+      transform: translateY(-150%);
+    }
+    .skip-link:focus { transform: translateY(0); }
+    header, main, footer {
+      width: min(1420px, calc(100% - 40px));
+      margin-inline: auto;
+    }
+    .page-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      padding: 28px 0 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 {
+      max-width: 27ch;
+      margin: 0;
+      font-size: clamp(25px, 3vw, 36px);
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+    }
+    .page-header p {
+      max-width: 76ch;
+      margin: 9px 0 0;
+      color: var(--muted);
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .status::before {
+      width: 8px;
+      height: 8px;
+      background: var(--warning);
+      border-radius: 50%;
+      content: "";
+    }
+    main { padding: 22px 0 38px; }
+    .decision {
+      display: grid;
+      grid-template-columns: minmax(280px, 1fr) minmax(0, 1fr);
+      gap: 28px;
+      align-items: center;
+      padding: 18px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .eyebrow {
+      margin: 0 0 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    h2 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.35;
+      letter-spacing: -0.015em;
+    }
+    .deltas {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .deltas li {
+      padding: 5px 9px;
+      color: #243b95;
+      background: var(--primary-soft);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .scenario-link {
+      display: inline-flex;
+      min-height: 38px;
+      align-items: center;
+      margin-top: 18px;
+      padding: 8px 13px;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      font-weight: 650;
+      text-decoration: none;
+    }
+    .frame-shell {
+      margin-top: 12px;
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 20px 55px rgb(21 32 43 / 7%);
+    }
+    iframe {
+      display: block;
+      width: 100%;
+      min-height: 820px;
+      border: 0;
+    }
+    .review-end {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, auto);
+      gap: 24px;
+      align-items: center;
+      margin-top: 18px;
+    }
+    .review-end p { margin: 0; color: var(--muted); }
+    .review-end strong { text-align: right; }
+    .source { color: var(--primary); }
+    footer {
+      padding-bottom: 28px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    @media (max-width: 760px) {
+      header, main, footer { width: min(100% - 24px, 1420px); }
+      .page-header, .decision, .review-end { grid-template-columns: 1fr; }
+      .page-header { align-items: start; }
+      .status { white-space: normal; }
+      .deltas { justify-content: flex-start; }
+      .review-end strong { text-align: left; }
+      iframe { min-height: 1420px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#review">跳到评审内容</a>
+  <header class="page-header">
+    <div>
+      <h1>VS Code 参考式 Agent 消息流</h1>
+      <p>当前 Relay 把响应片段压平成独立消息和活动卡片。本方向先固定并追踪 VS Code 开源代码，再决定 Relay 的回合分组、工具状态和渐进披露规则。</p>
+    </div>
+    <span class="status">说明性评审材料 · After 待源码核验</span>
+  </header>
+
+  <main id="review">
+    <section class="decision" aria-labelledby="decision-title">
+      <div>
+        <p class="eyebrow">待决定</p>
+        <h2 id="decision-title">是否批准以固定 revision 的 VS Code 源码为参考，重构 Relay Agent 消息流，而不是现在锁定一套自创的渲染规则？</h2>
+      </div>
+      <ul class="deltas" aria-label="关键变化">
+        <li>独立事件改为回合与响应片段层级</li>
+        <li>工具开始、结果与错误形成生命周期</li>
+        <li>细节默认渐进披露而非原始 JSON</li>
+        <li>最终规则以源码映射为准</li>
+      </ul>
+    </section>
+
+    <a class="scenario-link" href="scenarios/01-agent-turn.html" target="scenario-frame">完整 Agent 回合</a>
+    <div class="frame-shell">
+      <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-agent-turn.html" title="完整 Agent 回合对比"></iframe>
+    </div>
+
+    <section class="review-end" aria-label="评审结论">
+      <p>本材料仅说明待批准的信息层级方向，不是生产 UI、最终视觉规范或 VS Code 行为声明。<a class="source" href="../Idea.md">查看规范方向卡</a></p>
+      <strong>是否批准“源码追踪优先、策略适配而非直接复制”的消息流方向？</strong>
+    </section>
+  </main>
+
+  <footer>未决风险：VS Code 的确切分组、折叠、流式更新与可访问性实现尚未在固定 commit 上核对；这些结论属于实施阶段源码映射，不在本次方向评审中预设。</footer>
+
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      frame.style.height = `${Math.max(320, Number(event.data.height) || 0)}px`;
+    });
+  </script>
+</body>
+</html>
