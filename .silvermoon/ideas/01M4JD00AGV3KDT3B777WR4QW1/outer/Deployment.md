@@ -19,3 +19,7 @@
 ### D-AC02: 生产 Session 工作流可用
 
 真实账户可在至少一个已连接 Device 上选择 Session、读取活动并发送后续消息，且桌面与窄屏布局无阻断问题；以生产 smoke evidence 证明。
+
+## Evidence
+
+当前发布与生产 smoke 结果见 [Evidence.md](./Evidence.md)。

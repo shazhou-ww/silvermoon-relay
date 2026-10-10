@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>subsession 列表完整性评审</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #eef2f6;
+      --surface: #ffffff;
+      --ink: #15202b;
+      --muted: #657184;
+      --border: #d7dee8;
+      --primary: #3454d1;
+      --primary-soft: #e8ecff;
+      --warning: #a76518;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: "Segoe UI Variable", "Aptos", ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    a { color: var(--primary); }
+    a:focus-visible, iframe:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--primary) 32%, transparent);
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 10;
+      padding: 8px 12px;
+      color: #fff;
+      background: var(--ink);
+      border-radius: 7px;
+      transform: translateY(-150%);
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    header, main, footer {
+      width: min(1380px, calc(100% - 40px));
+      margin-inline: auto;
+    }
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 28px;
+      align-items: end;
+      padding: 28px 0 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(25px, 3vw, 36px);
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+    }
+    header p {
+      max-width: 72ch;
+      margin: 9px 0 0;
+      color: var(--muted);
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .status::before {
+      width: 8px;
+      height: 8px;
+      background: var(--warning);
+      border-radius: 50%;
+      content: "";
+    }
+
+    main { padding: 22px 0 38px; }
+    .decision {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.05fr);
+      gap: 28px;
+      align-items: center;
+      padding: 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .eyebrow {
+      margin: 0 0 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    h2 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.35;
+      letter-spacing: -0.015em;
+    }
+    .deltas {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .deltas li {
+      padding: 5px 9px;
+      color: #253b9e;
+      background: var(--primary-soft);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .frame-shell {
+      margin-top: 18px;
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 20px 55px rgb(21 32 43 / 7%);
+    }
+    iframe {
+      display: block;
+      width: 100%;
+      min-height: 710px;
+      border: 0;
+    }
+    .review-end {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: center;
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+    }
+    .review-end p { margin: 0; color: var(--muted); }
+    .review-end strong { text-align: right; }
+    footer { padding-bottom: 28px; color: var(--muted); font-size: 12px; }
+
+    @media (max-width: 720px) {
+      header, main, footer { width: min(100% - 24px, 1380px); }
+      header, .decision, .review-end { grid-template-columns: 1fr; }
+      header { align-items: start; }
+      .status { white-space: normal; }
+      .deltas { justify-content: flex-start; }
+      .review-end strong { text-align: left; }
+      iframe { min-height: 1120px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#review">跳到评审内容</a>
+  <header>
+    <div>
+      <h1>subsession 列表完整性</h1>
+      <p>用同一 Device、同一批会话数据对比当前缺失状态与修复后的扁平 Session 列表，不改变既有视觉层级。</p>
+    </div>
+    <span class="status">说明性评审材料</span>
+  </header>
+
+  <main id="review">
+    <section class="decision" aria-labelledby="decision-title">
+      <div>
+        <p class="eyebrow">待决定</p>
+        <h2 id="decision-title">是否批准让可用 subsession 与顶层 Session 一起出现在现有列表中？</h2>
+      </div>
+      <ul class="deltas" aria-label="关键变化">
+        <li>列表从 2 项补全为 3 项</li>
+        <li>subsession 沿用现有列表行</li>
+        <li>不增加树形导航</li>
+      </ul>
+    </section>
+
+    <div class="frame-shell">
+      <iframe
+        id="scenario-frame"
+        name="scenario-frame"
+        src="scenarios/01-session-list.html"
+        title="Session 列表完整性前后对比"
+      ></iframe>
+    </div>
+
+    <section class="review-end" aria-label="评审结论">
+      <p>本材料仅用于说明缺陷与预期结果，不是生产 UI 或规范性行为契约。<a href="../Idea.md">查看规范方向卡</a></p>
+      <strong>是否批准以扁平列表补全 subsession 的方向？</strong>
+    </section>
+  </main>
+
+  <footer>未决风险：实际遗漏点仍需在 Connector 的 SDK 与 Agent Host 会话来源中确认；方向不依赖新增父子关系字段。</footer>
+
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      frame.style.height = `${Math.max(320, Number(event.data.height) || 0)}px`;
+    });
+  </script>
+</body>
+</html>

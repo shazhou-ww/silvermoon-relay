@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   UserRound,
   WifiOff,
+  Wrench,
   X,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -317,6 +318,7 @@ function App() {
   >(null)
   const [sessionQuery, setSessionQuery] = useState("")
   const [attentionOnly, setAttentionOnly] = useState(false)
+  const [showToolEvents, setShowToolEvents] = useState(false)
   const [mobileView, setMobileView] = useState<"list" | "session">(
     () => selectionFromLocation() ? "session" : "list",
   )
@@ -476,6 +478,8 @@ function App() {
         )
       : null
     const fallback = requestedSession ?? agentSessions[0] ?? null
+    // oxlint-disable-next-line react/set-state-in-effect -- A replacement Session restores the default transcript filters.
+    setShowToolEvents(false)
     // oxlint-disable-next-line react/set-state-in-effect -- Selection follows the latest remote Session index.
     setSelection(
       fallback
@@ -495,6 +499,7 @@ function App() {
   useEffect(() => {
     const handlePopState = () => {
       const nextSelection = selectionFromLocation()
+      setShowToolEvents(false)
       setSelection(nextSelection)
       setMobileView(nextSelection ? "session" : "list")
     }
@@ -507,6 +512,7 @@ function App() {
       connectorId: session.connectorId,
       sessionId: session.id,
     }
+    setShowToolEvents(false)
     setSelection(nextSelection)
     setMobileView("session")
     updateLocationSelection(nextSelection, "push")
@@ -541,6 +547,22 @@ function App() {
       ) ?? null,
     [agentSessions, selectedConnectorId, selectedSessionId],
   )
+  const toolEventCount = useMemo(
+    () => events.filter((event) => event.type === "tool").length,
+    [events],
+  )
+  const visibleEvents = useMemo(
+    () =>
+      showToolEvents
+        ? events
+        : events.filter((event) => event.type !== "tool"),
+    [events, showToolEvents],
+  )
+  const toolEventToggleLabel = showToolEvents
+    ? "Hide tool messages"
+    : `Show ${toolEventCount} tool ${
+      toolEventCount === 1 ? "message" : "messages"
+    }`
   const canSyncSelectedHistory = selectedConnector?.status === "online"
     && selectedConnector.capabilities.streamEvents
 
@@ -859,6 +881,7 @@ function App() {
     setAgentSessions([])
     setSessionsLoadedForKey(null)
     setEvents([])
+    setShowToolEvents(false)
     setSelection(null)
     setTrackedCommand(null)
     setSettingsOpen(false)
@@ -1265,6 +1288,19 @@ function App() {
                         <span>
                           on {selectedConnector?.displayName ?? "Unknown device"}
                         </span>
+                        {toolEventCount > 0 && (
+                          <button
+                            type="button"
+                            className="transcript-tool-toggle"
+                            aria-pressed={showToolEvents}
+                            aria-label={toolEventToggleLabel}
+                            onClick={() =>
+                              setShowToolEvents((visible) => !visible)}
+                          >
+                            <Wrench aria-hidden="true" />
+                            {toolEventToggleLabel}
+                          </button>
+                        )}
                       </div>
 
                       {events.length === 0 && (
@@ -1285,7 +1321,21 @@ function App() {
                         </div>
                       )}
 
-                      {events.map((event) =>
+                      {events.length > 0 && visibleEvents.length === 0 && (
+                        <div
+                          className="transcript-empty transcript-empty-filtered"
+                          role="status"
+                        >
+                          <Wrench aria-hidden="true" />
+                          <strong>Tool messages are hidden</strong>
+                          <span>
+                            Use the control above to inspect tool activity for
+                            this Session.
+                          </span>
+                        </div>
+                      )}
+
+                      {visibleEvents.map((event) =>
                         event.type === "message"
                           ? (
                               <article

@@ -12,7 +12,7 @@
 
 并行加载所有 Connector 的 Agent Sessions，合并成按最近活动排序的一级列表，并以 `connectorId + sessionId` 作为 UI identity，避免不同 Device 下重复 Session ID 互相覆盖。每个 Session 列表项以 Device 标签表达唯一归属；事件读取、history sync 和命令发送必须继续只使用该 Session 的 Connector。显式选择通过 URL 同时持久化两个 ID，并可在加载和浏览器前进 / 后退时恢复。
 
-列表提供标题 / Device 搜索以及 waiting、failed、gone、unknown 状态的 attention filter。创建 Session 使用聚焦 dialog，要求选择在线 Device，并保留标题和初始 prompt。内容区以 message event 为会话主线，以紧凑 activity row 表达 tool、status、error 等运行事件。已接受的创建和 follow-up command 通过 `/api/commands/{id}` 轮询到 success 或 failure，不能在命令真正完成前给出成功反馈。
+列表提供标题 / Device 搜索以及 waiting、failed、gone、unknown 状态的 attention filter。创建 Session 使用聚焦 dialog，要求选择在线 Device，并保留标题和初始 prompt。内容区以 message event 为会话主线，以紧凑 activity row 表达 activity、status、error 等运行事件；tool event 默认不显示，transcript metadata 提供数量明确、可访问的显隐开关，切换 Session 后恢复默认隐藏。已接受的创建和 follow-up command 通过 `/api/commands/{id}` 轮询到 success 或 failure，不能在命令真正完成前给出成功反馈。
 
 ### I-S03: 完成响应式与界面质量
 
@@ -28,7 +28,7 @@
 
 ### I-AC02: Session 语义与状态保持准确
 
-多个 Device 的 Sessions 可从同一个一级列表发现，每个列表项只关联一个 Device，URL 能恢复同一 composite selection，选择 Session 后标题、状态、事件和命令目标一致且不会误用其他 Device；创建、发送、离线与失败状态通过针对性组件或集成测试证明。
+多个 Device 的 Sessions 可从同一个一级列表发现，每个列表项只关联一个 Device，URL 能恢复同一 composite selection，选择 Session 后标题、状态、事件和命令目标一致且不会误用其他 Device；tool event 默认不占用消息流空间，其数量与显隐开关准确且展开后保持原始事件顺序；创建、发送、离线与失败状态通过针对性组件或集成测试证明。
 
 ### I-AC03: 窄屏操作与可访问性可用
 
