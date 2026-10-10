@@ -337,7 +337,7 @@ export async function handleApi(
     if (request.method === "GET") {
       const sessions = await env.DB.prepare(
         `SELECT id, title, status, created_at, updated_at, last_activity_at,
-          last_message_preview
+          last_message_preview, parent_session_id, can_send_message
          FROM agent_sessions
          WHERE user_id = ?1 AND connector_id = ?2
          ORDER BY last_activity_at DESC
@@ -352,6 +352,8 @@ export async function handleApi(
           updated_at: string;
           last_activity_at: string;
           last_message_preview: string | null;
+          parent_session_id: string | null;
+          can_send_message: number;
         }>();
       return response(request, env, sessions.results.map((item) => ({
         id: item.id,
@@ -362,6 +364,8 @@ export async function handleApi(
         updatedAt: item.updated_at,
         lastActivityAt: item.last_activity_at,
         lastMessagePreview: item.last_message_preview,
+        parentSessionId: item.parent_session_id,
+        canSendMessage: item.can_send_message !== 0,
       })));
     }
 
@@ -613,7 +617,7 @@ export async function handleApi(
       );
     }
     const owned = await env.DB.prepare(
-      `SELECT 1 FROM agent_sessions
+      `SELECT can_send_message FROM agent_sessions
        WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3`,
     )
       .bind(
@@ -621,13 +625,21 @@ export async function handleApi(
         parsedConnectorId.data,
         parsedSessionId.data,
       )
-      .first();
+      .first<{ can_send_message: number }>();
     if (!owned) {
       return response(
         request,
         env,
         { error: "session-not-found" },
         { status: 404 },
+      );
+    }
+    if (owned.can_send_message === 0) {
+      return response(
+        request,
+        env,
+        { error: "session-read-only" },
+        { status: 409 },
       );
     }
     const body = await requestBody(request);

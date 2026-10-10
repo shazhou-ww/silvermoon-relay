@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentSessionSchema,
   agentSessionEventSchema,
   connectorCapabilitiesSchema,
   connectorCommandSchema,
@@ -99,6 +100,30 @@ describe("relay protocol", () => {
         createdAt: "2026-10-10T00:00:02.000Z",
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts legacy sessions and optional parent relationships", () => {
+    const legacySession = {
+      id: "session-1",
+      title: "Parent session",
+      status: "idle",
+      createdAt: "2026-10-10T00:00:00.000Z",
+      updatedAt: "2026-10-10T00:01:00.000Z",
+    };
+    expect(agentSessionSchema.parse(legacySession)).toMatchObject({
+      ...legacySession,
+      lastMessagePreview: null,
+    });
+    expect(agentSessionSchema.parse({
+      ...legacySession,
+      id: "session-2",
+      parentSessionId: "session-1",
+      canSendMessage: false,
+    })).toMatchObject({
+      id: "session-2",
+      parentSessionId: "session-1",
+      canSendMessage: false,
+    });
   });
 
   it("rejects unsupported versions and invalid connector identities", () => {

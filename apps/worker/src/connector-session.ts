@@ -259,13 +259,16 @@ export class ConnectorSession extends DurableObject<Env> {
     await this.env.DB.prepare(
       `INSERT INTO agent_sessions
         (user_id, connector_id, id, title, status, created_at, updated_at,
-         last_activity_at, last_message_preview)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8)
+         last_activity_at, last_message_preview, parent_session_id,
+         can_send_message)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?9, ?10)
        ON CONFLICT (user_id, connector_id, id) DO UPDATE SET
          title = excluded.title,
          status = excluded.status,
          updated_at = excluded.updated_at,
          last_activity_at = excluded.last_activity_at,
+         parent_session_id = excluded.parent_session_id,
+         can_send_message = excluded.can_send_message,
          last_message_preview = COALESCE(
            excluded.last_message_preview,
            agent_sessions.last_message_preview
@@ -280,6 +283,8 @@ export class ConnectorSession extends DurableObject<Env> {
         session.createdAt,
         session.updatedAt,
         session.lastMessagePreview,
+        session.parentSessionId ?? null,
+        session.canSendMessage === false ? 0 : 1,
       )
       .run();
   }

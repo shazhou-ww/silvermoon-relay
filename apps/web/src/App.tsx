@@ -65,6 +65,7 @@ import {
   type TranscriptPart,
   type TranscriptTurn,
 } from "@/message-flow"
+import { orderSessionHierarchy } from "@/session-list"
 
 const relayOrigin =
   import.meta.env.VITE_RELAY_ORIGIN ?? "https://relay.silvermoon.work"
@@ -131,12 +132,14 @@ interface Connector {
 interface AgentSession {
   id: string
   connectorId: string
+  parentSessionId: string | null
   title: string | null
   status: string
   createdAt: string
   updatedAt: string
   lastActivityAt: string
   lastMessagePreview: string | null
+  canSendMessage: boolean
 }
 
 interface CommandResponse {
@@ -872,18 +875,9 @@ function App() {
     () => new Map(connectors.map((connector) => [connector.id, connector])),
     [connectors],
   )
-  const sortedAgentSessions = useMemo(
-    () =>
-      [...agentSessions].sort(
-        (left, right) =>
-          (Date.parse(right.lastActivityAt) || 0)
-          - (Date.parse(left.lastActivityAt) || 0),
-      ),
-    [agentSessions],
-  )
   const visibleAgentSessions = useMemo(() => {
     const query = sessionQuery.trim().toLocaleLowerCase()
-    return sortedAgentSessions.filter((session) => {
+    const filteredSessions = agentSessions.filter((session) => {
       if (attentionOnly && !attentionStatuses.has(session.status)) return false
       if (!query) return true
       const connectorName =
@@ -894,11 +888,12 @@ function App() {
         connectorName,
       ].some((value) => value.toLocaleLowerCase().includes(query))
     })
+    return orderSessionHierarchy(filteredSessions)
   }, [
+    agentSessions,
     attentionOnly,
     connectorById,
     sessionQuery,
-    sortedAgentSessions,
   ])
   const onlineCreateConnectors = useMemo(
     () =>
@@ -918,6 +913,7 @@ function App() {
   )
   const canSendFollowUp = selectedConnector?.status === "online"
     && selectedConnector.capabilities.sendMessage
+    && selectedAgentSession?.canSendMessage !== false
   const trackedCommandId = trackedCommand?.id ?? null
   const trackedCommandLabel = trackedCommand?.label ?? null
 
@@ -1430,7 +1426,7 @@ function App() {
               </div>
             )}
 
-            {visibleAgentSessions.map((session) => {
+            {visibleAgentSessions.map(({ session, isSubsession }) => {
               const connector = connectorById.get(session.connectorId)
               const isSelected =
                 session.connectorId === selectedConnectorId
@@ -1439,7 +1435,7 @@ function App() {
                 <button
                   type="button"
                   key={`${session.connectorId}:${session.id}`}
-                  className={`session-list-item${isSelected ? " is-selected" : ""}`}
+                  className={`session-list-item${isSelected ? " is-selected" : ""}${isSubsession ? " is-subsession" : ""}`}
                   onClick={() => selectAgentSession(session)}
                   aria-current={isSelected ? "page" : undefined}
                 >
@@ -1614,7 +1610,9 @@ function App() {
                             }
                           }}
                           placeholder={
-                            canSendFollowUp
+                            selectedAgentSession.canSendMessage === false
+                              ? "This Session is read-only"
+                              : canSendFollowUp
                               ? "Ask for the next step... Shift+Enter for a new line."
                               : "This Session cannot receive messages right now"
                           }

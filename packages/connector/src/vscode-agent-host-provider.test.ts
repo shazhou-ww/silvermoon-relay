@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   ActionType,
+  ChatInteractivity,
   MessageKind,
   PendingMessageKind,
   ResponsePartKind,
@@ -19,6 +20,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentHostChatHistoryToEvents,
   agentHostSummaryToSession,
+  agentHostSummaryToSubsessions,
   createAgentHostMessageAction,
   discoverAgentHostEndpoints,
   resolveVsCodeUserDataDirectory,
@@ -84,16 +86,90 @@ describe("VS Code Agent Host mapping", () => {
     };
     expect(agentHostSummaryToSession(summary)).toEqual({
       id: "session-active",
+      parentSessionId: null,
       title: "Active work",
       status: "waiting",
       createdAt: "2026-10-10T00:00:00.000Z",
       updatedAt: "2026-10-10T00:01:00.000Z",
       lastMessagePreview: "Waiting for approval",
+      canSendMessage: true,
     });
     expect(agentHostSummaryToSession({
       ...summary,
       resource: "not a resource",
     })).toBeNull();
+  });
+
+  it("maps visible non-default chats to stable subsessions", () => {
+    const summary: SessionSummary = {
+      resource: "copilotcli:/session-parent",
+      provider: "copilotcli",
+      title: "Parent work",
+      status: SessionStatus.InProgress,
+      createdAt: "2026-10-10T00:00:00.000Z",
+      modifiedAt: "2026-10-10T00:01:00.000Z",
+      defaultChat: "ahp-chat:/session-parent/default",
+      chats: [{
+        resource: "ahp-chat:/session-parent/default",
+        title: "Default",
+        status: SessionStatus.InProgress,
+      }, {
+        resource: "ahp-chat:/session-parent/worker",
+        title: "Investigate tests",
+        status: SessionStatus.InProgress,
+        interactivity: ChatInteractivity.ReadOnly,
+      }, {
+        resource: "ahp-chat:/session-parent/internal",
+        title: "Internal worker",
+        interactivity: ChatInteractivity.Hidden,
+      }, {
+        resource: "ahp-chat:/session-parent/archived",
+        title: "Archived worker",
+        status: SessionStatus.Idle | SessionStatus.IsArchived,
+      }],
+    };
+    const parent = agentHostSummaryToSession(summary);
+    expect(parent).not.toBeNull();
+
+    const subsessions = agentHostSummaryToSubsessions(summary, parent!);
+    expect(subsessions).toEqual([{
+      resource: "ahp-chat:/session-parent/worker",
+      session: {
+        id: expect.stringMatching(/^ahp-chat:[0-9a-f]{64}$/u),
+        parentSessionId: "session-parent",
+        title: "Investigate tests",
+        status: "running",
+        createdAt: "2026-10-10T00:00:00.000Z",
+        updatedAt: "2026-10-10T00:01:00.000Z",
+        lastMessagePreview: null,
+        canSendMessage: false,
+      },
+    }]);
+    expect(agentHostSummaryToSubsessions(summary, parent!)[0].session.id)
+      .toBe(subsessions[0].session.id);
+  });
+
+  it("treats the first catalog chat as the default when none is designated", () => {
+    const summary: SessionSummary = {
+      resource: "copilotcli:/session-parent",
+      provider: "copilotcli",
+      title: "Parent work",
+      status: SessionStatus.Idle,
+      createdAt: "2026-10-10T00:00:00.000Z",
+      modifiedAt: "2026-10-10T00:01:00.000Z",
+      chats: [{
+        resource: "ahp-chat:/session-parent/first",
+        title: "First",
+      }, {
+        resource: "ahp-chat:/session-parent/second",
+        title: "Second",
+      }],
+    };
+    const parent = agentHostSummaryToSession(summary);
+    expect(parent).not.toBeNull();
+    expect(agentHostSummaryToSubsessions(summary, parent!)).toHaveLength(1);
+    expect(agentHostSummaryToSubsessions(summary, parent!)[0].session.title)
+      .toBe("Second");
   });
 
   it("maps complete and active turns without exposing partial assistant text", () => {

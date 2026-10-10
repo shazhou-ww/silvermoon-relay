@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   ActionType,
+  ChatInteractivity,
   MessageKind,
   PendingMessageKind,
   chatReducer,
@@ -12,6 +13,7 @@ import {
   type ChatAction,
   type ChatState,
   type SessionAction,
+  type SessionChatSummary,
   type SessionState,
   type SessionSummary,
   type StringOrMarkdown,
@@ -74,6 +76,7 @@ export interface VsCodeAgentHostProviderOptions {
 interface HostedSessionBinding {
   connection: AgentHostConnection;
   resource: string;
+  chatResource?: string;
   summary: SessionSummary;
   session: AgentSession;
 }
@@ -175,7 +178,23 @@ function sessionIdFromResource(resource: string): string | null {
   }
 }
 
-function sessionStatus(status: number): SessionStatus {
+function subsessionId(parentSessionId: string, resource: string): string | null {
+  try {
+    if (new URL(resource).protocol !== "ahp-chat:") return null;
+  } catch {
+    return null;
+  }
+  return `ahp-chat:${
+    createHash("sha256")
+      .update(parentSessionId)
+      .update("\0")
+      .update(resource)
+      .digest("hex")
+  }`;
+}
+
+function sessionStatus(status: number | undefined): SessionStatus {
+  if (status === undefined) return "unknown";
   if ((status & STATUS_INPUT_NEEDED) !== 0) return "waiting";
   if ((status & STATUS_IN_PROGRESS) !== 0) return "running";
   if ((status & STATUS_ERROR) !== 0) return "failed";
@@ -183,9 +202,23 @@ function sessionStatus(status: number): SessionStatus {
   return "unknown";
 }
 
+function isVisibleStatus(status: number | undefined): boolean {
+  return status === undefined
+    || (status & STATUS_ARCHIVED) === 0
+    || (status & STATUS_IN_PROGRESS) !== 0;
+}
+
+function defaultChatResource(summary: SessionSummary): string | undefined {
+  return summary.defaultChat ?? summary.chats?.at(0)?.resource;
+}
+
+function canSendToChat(chat: SessionChatSummary | undefined): boolean {
+  return chat?.interactivity !== ChatInteractivity.ReadOnly
+    && chat?.interactivity !== ChatInteractivity.Hidden;
+}
+
 function isVisibleSummary(summary: SessionSummary): boolean {
-  return (summary.status & STATUS_ARCHIVED) === 0
-    || (summary.status & STATUS_IN_PROGRESS) !== 0;
+  return isVisibleStatus(summary.status);
 }
 
 function isSupportedProtocolVersion(version: string): boolean {
@@ -202,7 +235,9 @@ function sameSession(left: AgentSession, right: AgentSession): boolean {
     && left.status === right.status
     && left.createdAt === right.createdAt
     && left.updatedAt === right.updatedAt
-    && left.lastMessagePreview === right.lastMessagePreview;
+    && left.lastMessagePreview === right.lastMessagePreview
+    && left.parentSessionId === right.parentSessionId
+    && left.canSendMessage === right.canSendMessage;
 }
 
 function preferredBinding(
@@ -225,14 +260,60 @@ export function agentHostSummaryToSession(
   const createdAt = validTimestamp(summary.createdAt);
   const updatedAt = validTimestamp(summary.modifiedAt);
   if (!id || !createdAt || !updatedAt) return null;
+  const chatResource = defaultChatResource(summary);
+  const defaultChat = summary.chats?.find(
+    (chat) => chat.resource === chatResource,
+  );
   return {
     id,
+    parentSessionId: null,
     title: boundedText(summary.title, 256),
     status: sessionStatus(summary.status),
     createdAt,
     updatedAt,
     lastMessagePreview: boundedText(summary.activity ?? summary.title, 512),
+    canSendMessage: summary.chats?.length === 0
+      ? false
+      : canSendToChat(defaultChat),
   };
+}
+
+export interface AgentHostSubsession {
+  resource: string;
+  session: AgentSession;
+}
+
+export function agentHostSummaryToSubsessions(
+  summary: SessionSummary,
+  parent: AgentSession,
+): AgentHostSubsession[] {
+  const defaultResource = defaultChatResource(summary);
+  const subsessions: AgentHostSubsession[] = [];
+  for (const chat of summary.chats ?? []) {
+    if (
+      chat.resource === defaultResource
+      || chat.interactivity === ChatInteractivity.Hidden
+      || !isVisibleStatus(chat.status)
+    ) {
+      continue;
+    }
+    const id = subsessionId(parent.id, chat.resource);
+    if (!id) continue;
+    subsessions.push({
+      resource: chat.resource,
+      session: {
+        id,
+        parentSessionId: parent.id,
+        title: boundedText(chat.title, 256),
+        status: sessionStatus(chat.status),
+        createdAt: parent.createdAt,
+        updatedAt: parent.updatedAt,
+        lastMessagePreview: null,
+        canSendMessage: canSendToChat(chat),
+      },
+    });
+  }
+  return subsessions;
 }
 
 function toolEventDraft(
@@ -954,9 +1035,11 @@ class AgentHostConnection {
     sessionId: string,
     resource: string,
     message: string,
+    selectedChatResource?: string,
   ): Promise<void> {
     const session = await this.ensureSession(resource);
-    const chatResource = session.state.defaultChat
+    const chatResource = selectedChatResource
+      ?? session.state.defaultChat
       ?? session.state.chats.at(0)?.resource;
     if (!chatResource) {
       throw new Error(`Agent Host session has no writable chat: ${sessionId}`);
@@ -971,9 +1054,11 @@ class AgentHostConnection {
   async loadSessionHistory(
     sessionId: string,
     resource: string,
+    selectedChatResource?: string,
   ): Promise<AgentSessionEvent[]> {
     const session = await this.ensureSession(resource);
-    const chatResource = session.state.defaultChat
+    const chatResource = selectedChatResource
+      ?? session.state.defaultChat
       ?? session.state.chats.at(0)?.resource;
     if (!chatResource) return [];
     const chat = await this.ensureChat(sessionId, chatResource);
@@ -1414,10 +1499,14 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
     message: string;
   }): Promise<void> {
     const binding = await this.requireSession(input.sessionId);
+    if (binding.session.canSendMessage === false) {
+      throw new Error(`VS Code Agent Host session is read-only: ${input.sessionId}`);
+    }
     await binding.connection.sendMessage(
       input.sessionId,
       binding.resource,
       input.message,
+      binding.chatResource,
     );
   }
 
@@ -1428,6 +1517,7 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
     return binding.connection.loadSessionHistory(
       sessionId,
       binding.resource,
+      binding.chatResource,
     );
   }
 
@@ -1589,17 +1679,30 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
           );
           continue;
         }
-        const candidate: HostedSessionBinding = {
+        const candidates: HostedSessionBinding[] = [{
           connection,
           resource: summary.resource,
           summary,
           session,
-        };
-        const current = next.get(session.id);
-        next.set(
-          session.id,
-          current ? preferredBinding(current, candidate) : candidate,
-        );
+        }];
+        for (
+          const subsession of agentHostSummaryToSubsessions(summary, session)
+        ) {
+          candidates.push({
+            connection,
+            resource: summary.resource,
+            chatResource: subsession.resource,
+            summary,
+            session: subsession.session,
+          });
+        }
+        for (const candidate of candidates) {
+          const current = next.get(candidate.session.id);
+          next.set(
+            candidate.session.id,
+            current ? preferredBinding(current, candidate) : candidate,
+          );
+        }
       }
     }
 
