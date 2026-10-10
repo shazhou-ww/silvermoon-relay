@@ -27,6 +27,21 @@ npm whoami --registry=https://registry.npmjs.org/
   `silvermoon-ai` 组织归属或维护者发布权限。后续需要在已获授权的 npm
   登录环境中执行只读 `npm org ls silvermoon-ai --json`，确认实际成员角色。
 
+### 组织创建确认与复核
+
+2026-10-10 07:47 UTC，用户明确确认 `silvermoon-ai` 组织已由其创建。
+这是组织已创建的用户确认，不是 registry 成员角色查询结果，也不是发布授权。
+
+随后再次只读核查：
+
+- `npm whoami --registry=https://registry.npmjs.org/` 仍返回 `ENEEDAUTH`，
+  退出码 1，未执行需要认证的组织成员查询。
+- 访问 `https://www.npmjs.com/org/silvermoon-ai` 返回 HTTP 403；在浏览器
+  中打开同一公开页面显示 `Performing security verification`，没有取得
+  组织资料或成员角色。未尝试绕过安全验证。
+- 这些结果不表示组织不存在。已知信息是用户确认组织已创建；当前环境
+  仍无法独立确认实际成员角色，因此 D-AC01 保持未完成。
+
 ## D-S02 / D-AC02：primary CI
 
 只读查询 [GitHub Actions run 38035247056](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38035247056)：
