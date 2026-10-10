@@ -4,7 +4,7 @@
 
 ### I-S01: 建立 package 迁移清单
 
-枚举所有工作区 package，记录当前名称、目标 `@silvermoon-ai/*` 名称以及公开或私有属性；迁移不得意外改变发布可见性。
+仓库已更名为 `shazhou-ww/silvermoon-ai`，以该 canonical repository 枚举所有工作区 package，记录当前名称、目标 `@silvermoon-ai/*` 名称以及公开或私有属性；迁移不得意外改变发布可见性。
 
 ### I-S02: 更新 scope 与仓库引用
 
