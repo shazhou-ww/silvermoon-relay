@@ -18,7 +18,7 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 应用迁移并发布兼容组件
+- [ ] **D-S01:** 发布兼容服务并核验 Connector 产物
 - [ ] **D-S02:** 执行真实目录冒烟验证
 
 ### Deployment acceptance criteria
