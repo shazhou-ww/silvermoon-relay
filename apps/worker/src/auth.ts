@@ -36,7 +36,19 @@ export async function authenticate(
 ): Promise<AuthenticatedConnection | null> {
   const authorization = request.headers.get("authorization");
   if (!authorization?.startsWith("Bearer ")) return null;
-  const parsed = parseConnectionToken(authorization.slice("Bearer ".length));
+  return authenticateConnectionToken(
+    authorization.slice("Bearer ".length),
+    env,
+    context,
+  );
+}
+
+export async function authenticateConnectionToken(
+  token: string,
+  env: AppEnv,
+  context?: ExecutionContext,
+): Promise<AuthenticatedConnection | null> {
+  const parsed = parseConnectionToken(token);
   if (!parsed) return null;
 
   const row = await env.DB.prepare(

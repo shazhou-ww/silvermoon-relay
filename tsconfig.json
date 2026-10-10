@@ -2,6 +2,8 @@
   "files": [],
   "references": [
     { "path": "./packages/protocol" },
+    { "path": "./packages/rpc" },
+    { "path": "./packages/connector" },
     { "path": "./apps/worker" },
     { "path": "./apps/web" }
   ]

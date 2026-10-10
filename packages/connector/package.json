@@ -1,0 +1,45 @@
+{
+  "name": "@silvermoon-relay/connector",
+  "version": "0.1.0",
+  "description": "Local agent connector for Silvermoon Relay",
+  "type": "module",
+  "bin": {
+    "silvermoon-connector": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./adapter": {
+      "types": "./dist/adapter.d.ts",
+      "default": "./dist/adapter.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "^1.0.19",
+    "@silvermoon-relay/protocol": "workspace:*",
+    "@silvermoon-relay/rpc": "workspace:*",
+    "@trpc/client": "^11.19.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}
