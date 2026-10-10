@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>窄屏 Session 导航</title>
+  <link rel="stylesheet" href="review.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>窄屏选中 Session</h1>
+      <p>同一账户和当前 Session；比较打开 Session 后首屏是否直接用于阅读与继续输入。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>列表与内容改为前后导航</li>
+      <li>当前标题与状态始终可见</li>
+      <li>Composer 不再落到长页底部</li>
+    </ul>
+  </header>
+
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-mobile-title">
+      <header class="state-label">
+        <strong id="before-mobile-title">Before</strong>
+        <span>390 × 844 等价窄屏 · 当前纵向堆叠</span>
+      </header>
+      <div class="product-surface mobile">
+        <div class="phone">
+          <div class="legacy-mobile-page">
+            <header class="mobile-page-header">
+              <div>
+                <small>● Relay control room</small>
+                <h2>Lee’s Relay</h2>
+              </div>
+              <button class="legacy-signout" type="button">Sign out</button>
+            </header>
+
+            <section class="mobile-stack-card">
+              <div class="mobile-stack-title">Devices <span class="legacy-count">2</span></div>
+              <div class="mobile-stack-body">
+                <div class="legacy-device selected">
+                  <div class="legacy-device-row">
+                    <i class="legacy-dot"></i>
+                    <strong>Studio laptop</strong>
+                  </div>
+                  <span>GitHub Copilot · 3 sessions</span>
+                </div>
+                <div class="legacy-device">
+                  <div class="legacy-device-row">
+                    <i class="legacy-dot offline"></i>
+                    <strong>Home desktop</strong>
+                  </div>
+                  <span>GitHub Copilot · 1 session</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="mobile-stack-card">
+              <div class="mobile-stack-title">Sessions <span class="legacy-count">3</span></div>
+              <div class="mobile-stack-body">
+                <div class="legacy-session selected">
+                  <div class="legacy-session-title">
+                    <strong>Relay UX redesign</strong>
+                    <span class="pill">running</span>
+                  </div>
+                  <span>Map the current user journey and key states</span>
+                </div>
+                <div class="legacy-session">
+                  <div class="legacy-session-title">
+                    <strong>Please approve the pending tool call</strong>
+                    <span class="pill waiting">waiting</span>
+                  </div>
+                  <span>Please approve the pending tool call</span>
+                </div>
+                <div class="legacy-session">
+                  <div class="legacy-session-title">
+                    <strong>Fix connector reconnect</strong>
+                    <span class="pill failed">failed</span>
+                  </div>
+                  <span>Connection dropped while syncing history</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="mobile-stack-card">
+              <div class="mobile-stack-title">Relay UX redesign</div>
+              <div class="below-fold">Session 内容与输入框继续位于页面下方</div>
+            </section>
+          </div>
+          <div class="fold-marker">当前首屏主要用于选择层级；需继续向下滚动才能回到内容与输入框</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="state after" aria-labelledby="after-mobile-title">
+      <header class="state-label">
+        <strong id="after-mobile-title">After</strong>
+        <span>390 × 844 等价窄屏 · Session 专注视图</span>
+      </header>
+      <div class="product-surface mobile">
+        <div class="phone mobile-workspace">
+          <header class="mobile-topbar">
+            <div class="mobile-brand">
+              <button class="back-button" type="button" aria-label="Back to sessions">‹</button>
+              <span class="relay-mark" aria-hidden="true"></span>
+              <span>Sessions</span>
+            </div>
+            <span class="avatar">LS</span>
+          </header>
+
+          <header class="mobile-session-meta">
+            <div class="truncate">
+              <strong>Relay UX redesign</strong>
+              <span class="device-tag">Studio laptop</span>
+            </div>
+            <span class="pill">Running</span>
+          </header>
+
+          <section class="mobile-transcript">
+            <article class="message user">
+              <div class="message-meta">You · 3:31 PM</div>
+              <div class="message-bubble">Map the current Relay UX.</div>
+            </article>
+            <article class="message assistant">
+              <div class="message-meta">
+                <span class="device-tag">Copilot</span>
+                <span>3:32 PM</span>
+              </div>
+              <div class="message-bubble">Reading the Web UI and current product ideas.</div>
+            </article>
+            <div class="activity-group">
+              <span class="activity-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <strong>3 activities</strong> · Read App.tsx and mapped states
+            </div>
+            <article class="message assistant">
+              <div class="message-meta">
+                <span class="device-tag">Copilot</span>
+                <span>Now</span>
+              </div>
+              <div class="message-bubble">Device can move into Session metadata so the content gets the full working area.</div>
+            </article>
+          </section>
+
+          <div class="mobile-composer">
+            <div class="composer-box">
+              <div class="composer-placeholder">Continue this session…</div>
+              <button class="send-button" type="button" aria-label="Send message">↑</button>
+            </div>
+            <p class="composer-hint">Sending to Studio laptop</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({
+        type: "ui-review:height",
+        height: document.documentElement.scrollHeight,
+      }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+    window.addEventListener("resize", reportHeight);
+  </script>
+</body>
+</html>

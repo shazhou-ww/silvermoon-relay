@@ -7,7 +7,9 @@ any signed-in browser.
 
 The project uses Silvermoon as its product concept, but it does **not** depend
 on the Silvermoon CLI or its repository format. The first connector adapter
-controls GitHub Copilot through the official `@github/copilot-sdk`.
+controls persisted GitHub Copilot sessions through the official
+`@github/copilot-sdk` and live VS Code sessions through the official Agent
+Host Protocol (AHP).
 
 ## Architecture
 
@@ -20,6 +22,7 @@ Cloudflare Worker ─── D1 (connectors, sessions, events, commands)
   │ authenticated tRPC over WebSocket
   ▼
 silvermoon-connector ─── GitHub Copilot SDK ─── local Copilot sessions
+                     └── VS Code Agent Host ─── live Copilot sessions
 ```
 
 - `apps/web`: React/Vite dashboard for devices, sessions, live activity,
@@ -37,6 +40,10 @@ events through tRPC mutations. The relay sends session commands through a
 tRPC subscription on the same WebSocket. Persisted session history is loaded
 on demand, uploaded in bounded event batches, and coalesced by the relay when
 the same session is already synchronized or has a history command in flight.
+The connector also discovers Agent Host endpoints published by VS Code for the
+current operating-system user. Live Agent Host metadata wins when the same
+session is also present in SDK storage; the connector falls back to persisted
+SDK metadata when the host disconnects.
 
 ## Requirements
 
@@ -52,7 +59,7 @@ Worker dry run.
 
 ```powershell
 pnpm install
-pnpm --filter @silvermoon-relay/worker d1:migrate:local
+pnpm --filter @silvermoon-ai/worker d1:migrate:local
 pnpm dev
 ```
 
@@ -66,7 +73,7 @@ Create a connection token in the Web UI, build the connector, and start it on
 the device that owns the Copilot sessions:
 
 ```powershell
-pnpm --filter @silvermoon-relay/connector build
+pnpm --filter @silvermoon-ai/connector build
 $env:SILVERMOON_CONNECTION_TOKEN = "smr1_..."
 node .\packages\connector\dist\cli.js `
   --id studio-laptop `
@@ -93,6 +100,14 @@ Run `silvermoon-connector --help` for all environment variables and options.
 `--approve-all` allows remotely initiated sessions to approve every Copilot
 permission request and can trigger local side effects. It is intentionally
 opt-in.
+
+Live VS Code sessions are discovered automatically from the current user's
+VS Code data directory. Use `--vscode-user-data-dir` or
+`SILVERMOON_VSCODE_USER_DATA_DIR` for portable, Insiders, or other custom
+profiles. The connector must run as the same operating-system user as VS Code;
+Agent Host connection tokens are read from the owner-local endpoint registry,
+used only for the local WebSocket upgrade, and never logged or persisted by
+the connector.
 
 ## Identity and connection tokens
 
@@ -133,10 +148,29 @@ then remove it.
 
 ```powershell
 pnpm check
-pnpm --filter @silvermoon-relay/worker d1:migrate:local
-pnpm --filter @silvermoon-relay/worker build
+pnpm --filter @silvermoon-ai/worker d1:migrate:local
+pnpm --filter @silvermoon-ai/worker build
 node .\packages\connector\dist\cli.js --help
 ```
+
+## Package scope migration
+
+Workspace packages now use the Silvermoon-AI npm scope:
+
+| Previous package | New package | Publication boundary |
+| --- | --- | --- |
+| `@silvermoon-relay/connector` | `@silvermoon-ai/connector` | Public |
+| `@silvermoon-relay/protocol` | `@silvermoon-ai/protocol` | Private workspace package |
+| `@silvermoon-relay/rpc` | `@silvermoon-ai/rpc` | Private workspace package |
+| `@silvermoon-relay/worker` | `@silvermoon-ai/worker` | Private application package |
+| `@silvermoon-relay/web` | `@silvermoon-ai/web` | Private application package |
+
+Consumers of the connector should replace the package spec and imports with
+`@silvermoon-ai/connector`. The `silvermoon-connector` executable name and
+relay protocol remain unchanged. After the new package is available, registry
+maintainers should deprecate the legacy connector with a message that points
+to `@silvermoon-ai/connector`; the private workspace packages must not be
+published under either scope.
 
 ## Release
 

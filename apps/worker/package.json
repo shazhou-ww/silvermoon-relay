@@ -1,5 +1,5 @@
 {
-  "name": "@silvermoon-relay/worker",
+  "name": "@silvermoon-ai/worker",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,8 +11,8 @@
     "typecheck": "wrangler types --check && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@silvermoon-relay/protocol": "workspace:*",
-    "@silvermoon-relay/rpc": "workspace:*",
+    "@silvermoon-ai/protocol": "workspace:*",
+    "@silvermoon-ai/rpc": "workspace:*",
     "@trpc/server": "^11.19.0",
     "jose": "^6.2.12"
   },
