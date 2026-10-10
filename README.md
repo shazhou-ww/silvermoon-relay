@@ -167,9 +167,11 @@ Workspace packages now use the Silvermoon-AI npm scope:
 
 Consumers of the connector should replace the package spec and imports with
 `@silvermoon-ai/connector`. The `silvermoon-connector` executable name and
-relay protocol remain unchanged. After the new package is available, registry
-maintainers should deprecate the legacy connector with a message that points
-to `@silvermoon-ai/connector`; the private workspace packages must not be
+relay protocol remain unchanged. The public connector bundles the protocol
+and RPC implementation it needs, so consumers do not install the private
+workspace packages. After the new package is available, registry maintainers
+should deprecate the legacy connector with a message that points to
+`@silvermoon-ai/connector`; the private workspace packages must not be
 published under either scope.
 
 ## Release

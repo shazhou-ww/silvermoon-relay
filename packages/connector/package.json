@@ -34,21 +34,23 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsup",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@github/copilot-sdk": "^1.0.19",
     "@microsoft/agent-host-protocol": "^1.0.0",
-    "@silvermoon-ai/protocol": "workspace:*",
-    "@silvermoon-ai/rpc": "workspace:*",
     "@trpc/client": "^11.19.0",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@silvermoon-ai/protocol": "workspace:*",
+    "@silvermoon-ai/rpc": "workspace:*",
     "@types/node": "^24.0.0",
     "@types/ws": "^8.18.1",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
   },

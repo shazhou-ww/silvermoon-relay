@@ -1,7 +1,6 @@
 import {
   approveAll,
   CopilotClient,
-  type CopilotSession,
   type ResumeSessionConfig,
   type SessionConfig,
   type SessionEvent,
@@ -474,4 +473,4 @@ export class CopilotAgentAdapter implements AgentAdapter {
   }
 }
 
-export type { CopilotSession };
+export type { CopilotSession } from "@github/copilot-sdk";

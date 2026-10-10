@@ -29,6 +29,10 @@ Install the public package after it has been released:
 pnpm add @silvermoon-ai/connector
 ```
 
+The published package includes the Silvermoon protocol and RPC implementation
+used by the connector. The monorepo's private workspace packages are not
+runtime dependencies for consumers.
+
 ## Run
 
 After installing the package, provide a stable device ID and a relay token:
