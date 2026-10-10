@@ -4,15 +4,15 @@
 
 ### Implementation steps
 
-- [ ] **I-S01:** 重组固定视口应用外壳
-- [ ] **I-S02:** 建立 Session-first 导航与工作流
-- [ ] **I-S03:** 完成响应式与界面质量
+- [x] **I-S01:** 重组固定视口应用外壳
+- [x] **I-S02:** 建立 Session-first 导航与工作流
+- [x] **I-S03:** 完成响应式与界面质量
 
 ### Implementation acceptance criteria
 
-- [ ] **I-AC01:** 桌面工作区占满有效视口
-- [ ] **I-AC02:** Session 语义与状态保持准确
-- [ ] **I-AC03:** 窄屏操作与可访问性可用
+- [x] **I-AC01:** 桌面工作区占满有效视口
+- [x] **I-AC02:** Session 语义与状态保持准确
+- [x] **I-AC03:** 窄屏操作与可访问性可用
 
 ## Deployment
 

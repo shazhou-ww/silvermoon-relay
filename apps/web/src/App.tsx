@@ -1,4 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  CircleAlert,
+  Copy,
+  KeyRound,
+  Laptop,
+  Link2,
+  LoaderCircle,
+  LogOut,
+  Plus,
+  Search,
+  Send,
+  Settings,
+  ShieldCheck,
+  UserRound,
+  WifiOff,
+  X,
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -8,6 +28,22 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -103,11 +139,36 @@ interface CommandResponse {
   }
 }
 
+interface CommandStatus {
+  id: string
+  connectorId: string
+  type: string
+  sessionId: string | null
+  status: "queued" | "sent" | "accepted" | "succeeded" | "failed"
+  error: {
+    code: string
+    message: string | null
+  } | null
+}
+
+interface TrackedCommand {
+  id: string
+  label: string
+  status: CommandStatus["status"]
+}
+
+interface SessionSelection {
+  connectorId: string
+  sessionId: string
+}
+
 const providerLabels: Record<Provider, string> = {
   google: "Google",
   microsoft: "Microsoft",
   github: "GitHub",
 }
+
+const attentionStatuses = new Set(["waiting", "failed", "gone", "unknown"])
 
 function csrfToken(): string {
   const item = document.cookie
@@ -146,6 +207,23 @@ function formatTime(value: string | null): string {
   })
 }
 
+function formatRelativeTime(value: string): string {
+  const timestamp = new Date(value).getTime()
+  if (Number.isNaN(timestamp)) return value
+  const elapsed = Math.max(0, Date.now() - timestamp)
+  const minutes = Math.floor(elapsed / 60_000)
+  if (minutes < 1) return "now"
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d`
+  return new Date(timestamp).toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+  })
+}
+
 function sessionLabel(session: AgentSession): string {
   return session.title || session.lastMessagePreview || "Untitled session"
 }
@@ -159,6 +237,48 @@ function eventLabel(event: AgentSessionEvent): string {
   return event.type[0].toUpperCase() + event.type.slice(1)
 }
 
+function eventBody(event: AgentSessionEvent): string {
+  if (event.text) return event.text
+  if (event.data) return JSON.stringify(event.data, null, 2)
+  return "No additional details."
+}
+
+function initials(value: string | null): string {
+  if (!value?.trim()) return "SM"
+  return value
+    .trim()
+    .split(/\s+/u)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+}
+
+function selectionFromLocation(): SessionSelection | null {
+  const params = new URLSearchParams(window.location.search)
+  const connectorId = params.get("connector")
+  const sessionId = params.get("session")
+  return connectorId && sessionId ? { connectorId, sessionId } : null
+}
+
+function updateLocationSelection(
+  selection: SessionSelection | null,
+  mode: "push" | "replace",
+) {
+  const url = new URL(window.location.href)
+  if (selection) {
+    url.searchParams.set("connector", selection.connectorId)
+    url.searchParams.set("session", selection.sessionId)
+  } else {
+    url.searchParams.delete("connector")
+    url.searchParams.delete("session")
+  }
+  window.history[mode === "push" ? "pushState" : "replaceState"](
+    {},
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  )
+}
+
 function App() {
   const [account, setAccount] = useState<Account | null>(null)
   const [tokens, setTokens] = useState<ConnectionToken[]>([])
@@ -166,13 +286,14 @@ function App() {
   const [connectors, setConnectors] = useState<Connector[]>([])
   const [agentSessions, setAgentSessions] = useState<AgentSession[]>([])
   const [events, setEvents] = useState<AgentSessionEvent[]>([])
-  const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(
-    null,
-  )
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
-    null,
+  const [selection, setSelection] = useState<SessionSelection | null>(
+    () => selectionFromLocation(),
   )
   const [loading, setLoading] = useState(true)
+  const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [sessionsLoadedForKey, setSessionsLoadedForKey] = useState<
+    string | null
+  >(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
@@ -182,16 +303,25 @@ function App() {
   const [sessionTitle, setSessionTitle] = useState("")
   const [sessionPrompt, setSessionPrompt] = useState("")
   const [followUp, setFollowUp] = useState("")
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [newSessionOpen, setNewSessionOpen] = useState(false)
+  const [newSessionConnectorId, setNewSessionConnectorId] = useState<
+    string | null
+  >(null)
+  const [sessionQuery, setSessionQuery] = useState("")
+  const [attentionOnly, setAttentionOnly] = useState(false)
+  const [mobileView, setMobileView] = useState<"list" | "session">(
+    () => selectionFromLocation() ? "session" : "list",
+  )
+  const [trackedCommand, setTrackedCommand] =
+    useState<TrackedCommand | null>(null)
   const historyRequests = useRef(new Set<string>())
-
-  const selectConnector = useCallback((items: Connector[]) => {
-    setSelectedConnectorId((current) => {
-      if (current && items.some((item) => item.id === current)) return current
-      return items.find((item) => item.status === "online")?.id
-        ?? items[0]?.id
-        ?? null
-    })
-  }, [])
+  const selectedConnectorId = selection?.connectorId ?? null
+  const selectedSessionId = selection?.sessionId ?? null
+  const connectorIdKey = useMemo(
+    () => connectors.map((connector) => connector.id).sort().join("|"),
+    [connectors],
+  )
 
   const refresh = useCallback(async () => {
     try {
@@ -205,7 +335,6 @@ function App() {
       setTokens(tokenItems)
       setBrowserSessions(sessionItems)
       setConnectors(connectorItems)
-      selectConnector(connectorItems)
       setError(null)
     } catch (caught) {
       if (
@@ -219,10 +348,10 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [selectConnector])
+  }, [])
 
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- The first remote snapshot is loaded after mount.
+    // oxlint-disable-next-line react/set-state-in-effect -- Initial remote state loads after mount.
     void refresh()
   }, [refresh])
 
@@ -232,9 +361,7 @@ function App() {
     const poll = async () => {
       try {
         const items = await api<Connector[]>("/api/connectors")
-        if (!active) return
-        setConnectors(items)
-        selectConnector(items)
+        if (active) setConnectors(items)
       } catch (caught) {
         if (active && caught instanceof Error) setError(caught.message)
       }
@@ -244,25 +371,39 @@ function App() {
       active = false
       window.clearInterval(timer)
     }
-  }, [account, selectConnector])
+  }, [account])
 
   useEffect(() => {
-    if (!account || !selectedConnectorId) return
+    if (!account) return
+    const connectorIds = connectorIdKey ? connectorIdKey.split("|") : []
+    if (connectorIds.length === 0) {
+      // oxlint-disable-next-line react/set-state-in-effect -- The remote index is empty when no Devices exist.
+      setAgentSessions([])
+      setSessionsLoading(false)
+      setSessionsLoadedForKey("")
+      return
+    }
     let active = true
-    const connectorId = encodeURIComponent(selectedConnectorId)
+    let firstLoad = true
     const poll = async () => {
+      if (firstLoad) setSessionsLoading(true)
       try {
-        const items = await api<AgentSession[]>(
-          `/api/connectors/${connectorId}/sessions`,
+        const groups = await Promise.all(
+          connectorIds.map((connectorId) =>
+            api<AgentSession[]>(
+              `/api/connectors/${encodeURIComponent(connectorId)}/sessions`,
+            )
+          ),
         )
-        if (!active) return
-        setAgentSessions(items)
-        setSelectedSessionId((current) => {
-          if (current && items.some((item) => item.id === current)) return current
-          return items[0]?.id ?? null
-        })
+        if (active) {
+          setAgentSessions(groups.flat())
+          setSessionsLoadedForKey(connectorIdKey)
+        }
       } catch (caught) {
         if (active && caught instanceof Error) setError(caught.message)
+      } finally {
+        if (active && firstLoad) setSessionsLoading(false)
+        firstLoad = false
       }
     }
     void poll()
@@ -271,21 +412,99 @@ function App() {
       active = false
       window.clearInterval(timer)
     }
-  }, [account, selectedConnectorId])
+  }, [account, connectorIdKey])
+
+  useEffect(() => {
+    if (
+      !account
+      || sessionsLoading
+      || sessionsLoadedForKey !== connectorIdKey
+    ) {
+      return
+    }
+    if (
+      selection
+      && agentSessions.some(
+        (session) =>
+          session.connectorId === selection.connectorId
+          && session.id === selection.sessionId,
+      )
+    ) {
+      return
+    }
+    const requested = selectionFromLocation()
+    const requestedSession = requested
+      ? agentSessions.find(
+          (session) =>
+            session.connectorId === requested.connectorId
+            && session.id === requested.sessionId,
+        )
+      : null
+    const fallback = requestedSession ?? agentSessions[0] ?? null
+    // oxlint-disable-next-line react/set-state-in-effect -- Selection follows the latest remote Session index.
+    setSelection(
+      fallback
+        ? { connectorId: fallback.connectorId, sessionId: fallback.id }
+        : null,
+    )
+    if (requested && !requestedSession) updateLocationSelection(null, "replace")
+  }, [
+    account,
+    agentSessions,
+    connectorIdKey,
+    selection,
+    sessionsLoadedForKey,
+    sessionsLoading,
+  ])
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const nextSelection = selectionFromLocation()
+      setSelection(nextSelection)
+      setMobileView(nextSelection ? "session" : "list")
+    }
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
+
+  const selectAgentSession = useCallback((session: AgentSession) => {
+    const nextSelection = {
+      connectorId: session.connectorId,
+      sessionId: session.id,
+    }
+    setSelection(nextSelection)
+    setMobileView("session")
+    updateLocationSelection(nextSelection, "push")
+  }, [])
+
+  const openSessionList = useCallback(() => {
+    setMobileView("list")
+    updateLocationSelection(null, "push")
+  }, [])
 
   const selectedSessionAvailable = Boolean(
     selectedConnectorId
     && selectedSessionId
     && agentSessions.some(
-      (item) =>
-        item.connectorId === selectedConnectorId
-        && item.id === selectedSessionId,
+      (session) =>
+        session.connectorId === selectedConnectorId
+        && session.id === selectedSessionId,
     ),
   )
-
   const selectedConnector = useMemo(
-    () => connectors.find((item) => item.id === selectedConnectorId) ?? null,
+    () =>
+      connectors.find((connector) => connector.id === selectedConnectorId)
+      ?? null,
     [connectors, selectedConnectorId],
+  )
+  const selectedAgentSession = useMemo(
+    () =>
+      agentSessions.find(
+        (session) =>
+          session.connectorId === selectedConnectorId
+          && session.id === selectedSessionId,
+      ) ?? null,
+    [agentSessions, selectedConnectorId, selectedSessionId],
   )
   const canSyncSelectedHistory = selectedConnector?.status === "online"
     && selectedConnector.capabilities.streamEvents
@@ -296,18 +515,19 @@ function App() {
       || !selectedConnectorId
       || !selectedSessionId
       || !selectedSessionAvailable
-    ) return
+    ) {
+      return
+    }
     let active = true
     let after = -1
     let loadedEvents: AgentSessionEvent[] = []
+    // oxlint-disable-next-line react/set-state-in-effect -- Clear stale events before polling a new composite selection.
+    setEvents([])
     const connectorId = encodeURIComponent(selectedConnectorId)
     const sessionId = encodeURIComponent(selectedSessionId)
     const requestKey = `${selectedConnectorId}:${selectedSessionId}`
     const requestHistory = async () => {
-      if (
-        !canSyncSelectedHistory
-        || historyRequests.current.has(requestKey)
-      ) {
+      if (!canSyncSelectedHistory || historyRequests.current.has(requestKey)) {
         return
       }
       historyRequests.current.add(requestKey)
@@ -354,34 +574,121 @@ function App() {
     selectedSessionId,
   ])
 
-  const visibleAgentSessions = useMemo(
-    () => selectedConnectorId
-      ? agentSessions.filter(
-          (item) => item.connectorId === selectedConnectorId,
-        )
-      : [],
-    [agentSessions, selectedConnectorId],
+  const connectorById = useMemo(
+    () => new Map(connectors.map((connector) => [connector.id, connector])),
+    [connectors],
   )
-  const selectedAgentSession = useMemo(
+  const sortedAgentSessions = useMemo(
     () =>
-      visibleAgentSessions.find((item) => item.id === selectedSessionId)
-      ?? null,
-    [selectedSessionId, visibleAgentSessions],
+      [...agentSessions].sort(
+        (left, right) =>
+          (Date.parse(right.lastActivityAt) || 0)
+          - (Date.parse(left.lastActivityAt) || 0),
+      ),
+    [agentSessions],
   )
-  const visibleEvents = useMemo(
-    () => selectedSessionId
-      ? events.filter((event) => event.sessionId === selectedSessionId)
-      : [],
-    [events, selectedSessionId],
+  const visibleAgentSessions = useMemo(() => {
+    const query = sessionQuery.trim().toLocaleLowerCase()
+    return sortedAgentSessions.filter((session) => {
+      if (attentionOnly && !attentionStatuses.has(session.status)) return false
+      if (!query) return true
+      const connectorName =
+        connectorById.get(session.connectorId)?.displayName ?? ""
+      return [
+        sessionLabel(session),
+        session.lastMessagePreview ?? "",
+        connectorName,
+      ].some((value) => value.toLocaleLowerCase().includes(query))
+    })
+  }, [
+    attentionOnly,
+    connectorById,
+    sessionQuery,
+    sortedAgentSessions,
+  ])
+  const onlineCreateConnectors = useMemo(
+    () =>
+      connectors.filter(
+        (connector) =>
+          connector.status === "online"
+          && connector.capabilities.createSession,
+      ),
+    [connectors],
   )
+  const newSessionConnector = useMemo(
+    () =>
+      onlineCreateConnectors.find(
+        (connector) => connector.id === newSessionConnectorId,
+      ) ?? null,
+    [newSessionConnectorId, onlineCreateConnectors],
+  )
+  const canSendFollowUp = selectedConnector?.status === "online"
+    && selectedConnector.capabilities.sendMessage
+  const trackedCommandId = trackedCommand?.id ?? null
+  const trackedCommandLabel = trackedCommand?.label ?? null
+
+  useEffect(() => {
+    if (!trackedCommandId || !trackedCommandLabel) return
+    let active = true
+    let timer: number | undefined
+    const poll = async () => {
+      try {
+        const result = await api<CommandStatus>(
+          `/api/commands/${encodeURIComponent(trackedCommandId)}`,
+        )
+        if (!active) return
+        if (result.status === "succeeded") {
+          if (timer !== undefined) window.clearInterval(timer)
+          setTrackedCommand(null)
+          setNotice(`${trackedCommandLabel} completed.`)
+          setError(null)
+          return
+        }
+        if (result.status === "failed") {
+          if (timer !== undefined) window.clearInterval(timer)
+          setTrackedCommand(null)
+          setNotice(null)
+          setError(
+            result.error?.message
+            || result.error?.code
+            || `${trackedCommandLabel} failed.`,
+          )
+          return
+        }
+        setTrackedCommand((current) =>
+          current?.id === result.id
+            ? { ...current, status: result.status }
+            : current
+        )
+      } catch (caught) {
+        if (active && caught instanceof Error) setError(caught.message)
+      }
+    }
+    void poll()
+    timer = window.setInterval(() => void poll(), 1_000)
+    return () => {
+      active = false
+      if (timer !== undefined) window.clearInterval(timer)
+    }
+  }, [trackedCommandId, trackedCommandLabel])
+
+  function openNewSession() {
+    const preferred =
+      onlineCreateConnectors.find(
+        (connector) => connector.id === selectedConnectorId,
+      ) ?? onlineCreateConnectors[0] ?? null
+    setNewSessionConnectorId(preferred?.id ?? null)
+    setNewSessionOpen(true)
+  }
 
   async function createAgentSession(event: React.FormEvent) {
     event.preventDefault()
-    if (!selectedConnector || !sessionPrompt.trim()) return
+    if (!newSessionConnector || !sessionPrompt.trim() || trackedCommand) return
     setBusyAction("create-session")
     setNotice(null)
+    setError(null)
     try {
-      const connectorId = encodeURIComponent(selectedConnector.id)
+      const connectorId = encodeURIComponent(newSessionConnector.id)
       const result = await api<CommandResponse>(
         `/api/connectors/${connectorId}/sessions`,
         {
@@ -394,8 +701,13 @@ function App() {
       )
       setSessionTitle("")
       setSessionPrompt("")
-      setNotice(`Session request sent (${result.command.id.slice(0, 8)}).`)
-      setError(null)
+      setNewSessionOpen(false)
+      setTrackedCommand({
+        id: result.command.id,
+        label: "Session",
+        status: result.command.status,
+      })
+      setNotice(`Starting a Session on ${newSessionConnector.displayName}...`)
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Session creation failed",
@@ -407,9 +719,18 @@ function App() {
 
   async function sendFollowUp(event: React.FormEvent) {
     event.preventDefault()
-    if (!selectedConnector || !selectedAgentSession || !followUp.trim()) return
+    if (
+      !selectedConnector
+      || !selectedAgentSession
+      || !canSendFollowUp
+      || !followUp.trim()
+      || trackedCommand
+    ) {
+      return
+    }
     setBusyAction("send-message")
     setNotice(null)
+    setError(null)
     try {
       const connectorId = encodeURIComponent(selectedConnector.id)
       const sessionId = encodeURIComponent(selectedAgentSession.id)
@@ -421,8 +742,12 @@ function App() {
         },
       )
       setFollowUp("")
-      setNotice(`Follow-up sent (${result.command.id.slice(0, 8)}).`)
-      setError(null)
+      setTrackedCommand({
+        id: result.command.id,
+        label: "Follow-up",
+        status: result.command.status,
+      })
+      setNotice("Delivering your follow-up...")
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Message delivery failed",
@@ -434,6 +759,7 @@ function App() {
 
   async function createConnectionToken() {
     setBusyAction("create-token")
+    setError(null)
     try {
       const result = await api<{ token: string; metadata: ConnectionToken }>(
         "/api/tokens",
@@ -455,6 +781,7 @@ function App() {
   }
 
   async function revokeConnectionToken(id: string) {
+    setError(null)
     try {
       await api(`/api/tokens/${id}`, { method: "DELETE" })
       await refresh()
@@ -466,6 +793,7 @@ function App() {
   }
 
   async function rotateConnectionToken(id: string) {
+    setError(null)
     try {
       const result = await api<{ token: string }>(
         `/api/tokens/${id}/rotate`,
@@ -481,21 +809,51 @@ function App() {
   }
 
   async function logout() {
+    setError(null)
     try {
       await api("/api/logout", { method: "POST" })
-      setAccount(null)
-      setConnectors([])
-      setAgentSessions([])
-      setEvents([])
+      clearAuthenticatedState()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Sign out failed")
     }
   }
 
-  async function revokeBrowserSession(id: string) {
+  function clearAuthenticatedState() {
+    setAccount(null)
+    setConnectors([])
+    setAgentSessions([])
+    setSessionsLoadedForKey(null)
+    setEvents([])
+    setSelection(null)
+    setTrackedCommand(null)
+    setSettingsOpen(false)
+    setMobileView("list")
+    updateLocationSelection(null, "replace")
+  }
+
+  async function copyRevealedToken() {
+    if (!revealedToken) return
     try {
+      await navigator.clipboard.writeText(revealedToken)
+      setNotice("Connection token copied.")
+      setError(null)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Copy failed")
+    }
+  }
+
+  async function revokeBrowserSession(id: string) {
+    setError(null)
+    try {
+      const revokingCurrent = browserSessions.some(
+        (session) => session.id === id && session.current,
+      )
       await api(`/api/sessions/${id}`, { method: "DELETE" })
-      await refresh()
+      if (revokingCurrent) {
+        clearAuthenticatedState()
+      } else {
+        await refresh()
+      }
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Session revocation failed",
@@ -504,6 +862,7 @@ function App() {
   }
 
   async function unlinkIdentity(provider: Provider) {
+    setError(null)
     try {
       await api(`/api/identities/${provider}`, { method: "DELETE" })
       await refresh()
@@ -517,7 +876,7 @@ function App() {
   if (loading) {
     return (
       <Shell>
-        <p className="text-muted-foreground">Loading your relay…</p>
+        <p className="text-muted-foreground">Loading your relay...</p>
       </Shell>
     )
   }
@@ -577,495 +936,848 @@ function App() {
     )
   }
 
+  const accountName =
+    account.user.displayName
+    ?? account.identities[0]?.displayName
+    ?? account.identities[0]?.email
+    ?? "Relay user"
+  const accountDetail =
+    account.identities.find((identity) => identity.email)?.email
+    ?? "Signed in"
+  const onlineConnectorCount = connectors.filter(
+    (connector) => connector.status === "online",
+  ).length
+
   return (
-    <Shell>
-      <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="status-pulse" />
-            Relay control room
+    <>
+      <main className={`relay-app mobile-view-${mobileView}`}>
+        <header className="relay-brand">
+          <RelayMark />
+          <div className="brand-lockup">
+            <strong>Silvermoon</strong>
+            <span>Relay</span>
           </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-5xl">
-            {account.user.displayName ?? "Your devices"}
-          </h1>
-        </div>
-        <Button variant="outline" onClick={() => void logout()}>
-          Sign out
-        </Button>
-      </header>
+        </header>
 
-      {(error || notice) && (
-        <div
-          role={error ? "alert" : "status"}
-          className={
-            error
-              ? "rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-              : "rounded-xl border border-[var(--online)]/30 bg-[var(--online-soft)] p-3 text-sm text-[var(--online-deep)]"
-          }
-        >
-          {error ?? notice}
-        </div>
-      )}
+        <header className="session-topbar">
+          <div className="mobile-topbar-context">
+            {mobileView === "session" && (
+              <button
+                type="button"
+                className="mobile-back-button"
+                onClick={openSessionList}
+                aria-label="Back to Sessions"
+              >
+                <ArrowLeft aria-hidden="true" />
+              </button>
+            )}
+            <RelayMark compact />
+            <span>{mobileView === "session" ? "Session" : "Sessions"}</span>
+          </div>
 
-      <section className="control-surface grid min-h-[42rem] overflow-hidden rounded-[1.5rem] border bg-card lg:grid-cols-[15rem_21rem_minmax(0,1fr)]">
-        <aside className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
-          <div className="border-b p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold">Devices</h2>
-              <Badge variant="outline">{connectors.length}</Badge>
+          <div className="desktop-session-context">
+            {selectedAgentSession
+              ? (
+                  <>
+                    <div className="session-heading-copy">
+                      <h1>{sessionLabel(selectedAgentSession)}</h1>
+                      <span>
+                        {selectedConnector?.displayName
+                          ?? "Unknown device"}
+                      </span>
+                    </div>
+                    <SessionStatus status={selectedAgentSession.status} />
+                  </>
+                )
+              : (
+                  <div className="session-heading-copy">
+                    <h1>Select a Session</h1>
+                    <span>Choose active work from the Session list</span>
+                  </div>
+                )}
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className="account-trigger"
+                aria-label={`Account menu for ${accountName}`}
+              >
+                <span className="account-avatar" aria-hidden="true">
+                  {account.user.avatarUrl
+                    ? <img src={account.user.avatarUrl} alt="" />
+                    : initials(accountName)}
+                </span>
+                <span className="account-trigger-copy">
+                  <strong>{accountName}</strong>
+                  <span>{accountDetail}</span>
+                </span>
+                <ChevronDown aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="account-menu">
+              <DropdownMenuLabel>
+                <span className="account-menu-name">{accountName}</span>
+                <span className="account-menu-detail">{accountDetail}</span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+                <Settings aria-hidden="true" />
+                Account and connections
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => void logout()}
+              >
+                <LogOut aria-hidden="true" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
+
+        <aside className="session-rail" aria-label="Sessions">
+          <div className="session-rail-heading">
+            <div>
+              <h2>Sessions</h2>
+              <p>
+                {agentSessions.length === 1
+                  ? "1 active thread"
+                  : `${agentSessions.length} active threads`}
+              </p>
             </div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Connectors currently known to this account.
-            </p>
+            <Button
+              size="icon"
+              className="new-session-button"
+              onClick={openNewSession}
+              disabled={onlineCreateConnectors.length === 0}
+              title={
+                onlineCreateConnectors.length === 0
+                  ? "No online Device can create Sessions"
+                  : "New Session"
+              }
+            >
+              <Plus aria-hidden="true" />
+              <span className="sr-only">New Session</span>
+            </Button>
           </div>
-          <div className="signal-list flex max-h-72 flex-col overflow-y-auto p-2 lg:max-h-none lg:flex-1">
-            {connectors.length === 0 && (
-              <div className="m-3 border-l-2 border-primary pl-4">
-                <p className="text-sm font-medium">No device connected</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Create a token below, then run silvermoon-connector on a
-                  device.
-                </p>
+
+          <div className="session-rail-tools">
+            <label className="session-search">
+              <Search aria-hidden="true" />
+              <Input
+                value={sessionQuery}
+                onChange={(event) => setSessionQuery(event.target.value)}
+                placeholder="Find a Session or Device"
+                aria-label="Find a Session or Device"
+              />
+            </label>
+            <div className="session-filters" aria-label="Session filters">
+              <button
+                type="button"
+                aria-pressed={!attentionOnly}
+                onClick={() => setAttentionOnly(false)}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                aria-pressed={attentionOnly}
+                onClick={() => setAttentionOnly(true)}
+              >
+                Needs attention
+              </button>
+            </div>
+          </div>
+
+          <div className="session-list">
+            {sessionsLoading && agentSessions.length === 0 && (
+              <div className="session-list-state" role="status">
+                <LoaderCircle className="animate-spin" aria-hidden="true" />
+                <strong>Loading Sessions</strong>
+                <span>Reading recent work from your Devices.</span>
               </div>
             )}
-            {connectors.map((connector) => (
-              <button
-                key={connector.id}
-                type="button"
-                aria-pressed={connector.id === selectedConnectorId}
-                className="connector-item"
-                onClick={() => {
-                  setSelectedConnectorId(connector.id)
-                  setSelectedSessionId(null)
-                }}
-              >
-                <span
-                  className={
-                    connector.status === "online"
-                      ? "connector-dot connector-dot-online"
-                      : "connector-dot"
-                  }
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">
-                    {connector.displayName}
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                    {connector.agent?.name ?? connector.id}
-                  </span>
+
+            {!sessionsLoading && agentSessions.length === 0 && (
+              <div className="session-list-state">
+                <Laptop aria-hidden="true" />
+                <strong>No Sessions yet</strong>
+                <span>
+                  Bring a Device online, then start the first Session.
                 </span>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {connector.sessionCount}
-                </span>
-              </button>
-            ))}
+                {onlineCreateConnectors.length > 0 && (
+                  <Button size="sm" onClick={openNewSession}>
+                    <Plus aria-hidden="true" />
+                    New Session
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {agentSessions.length > 0 && visibleAgentSessions.length === 0 && (
+              <div className="session-list-state">
+                <Search aria-hidden="true" />
+                <strong>No matching Sessions</strong>
+                <span>Try a different search or show all states.</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSessionQuery("")
+                    setAttentionOnly(false)
+                  }}
+                >
+                  Clear filters
+                </Button>
+              </div>
+            )}
+
+            {visibleAgentSessions.map((session) => {
+              const connector = connectorById.get(session.connectorId)
+              const isSelected =
+                session.connectorId === selectedConnectorId
+                && session.id === selectedSessionId
+              return (
+                <button
+                  type="button"
+                  key={`${session.connectorId}:${session.id}`}
+                  className={`session-list-item${isSelected ? " is-selected" : ""}`}
+                  onClick={() => selectAgentSession(session)}
+                  aria-current={isSelected ? "page" : undefined}
+                >
+                  <span
+                    className="session-state-dot"
+                    data-status={session.status}
+                    aria-hidden="true"
+                  />
+                  <span className="session-item-main">
+                    <span className="session-item-title">
+                      {sessionLabel(session)}
+                    </span>
+                    <span className="session-item-meta">
+                      <span className="device-tag">
+                        <Laptop aria-hidden="true" />
+                        {connector?.displayName ?? "Unknown device"}
+                      </span>
+                      <span className="session-item-status">
+                        {session.status}
+                      </span>
+                    </span>
+                    {session.lastMessagePreview && (
+                      <span className="session-item-preview">
+                        {session.lastMessagePreview}
+                      </span>
+                    )}
+                  </span>
+                  <time
+                    className="session-item-time"
+                    dateTime={session.lastActivityAt}
+                    title={formatTime(session.lastActivityAt)}
+                  >
+                    {formatRelativeTime(session.lastActivityAt)}
+                  </time>
+                </button>
+              )
+            })}
           </div>
-          {selectedConnector && (
-            <div className="border-t p-4 text-xs leading-5 text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {selectedConnector.status === "online" ? "Online" : "Offline"}
-              </span>
-              <br />
-              Last seen {formatTime(selectedConnector.lastSeenAt)}
-            </div>
-          )}
+
+          <div className="session-rail-footer">
+            <span>
+              <span className="online-pin" aria-hidden="true" />
+              {onlineConnectorCount} online
+            </span>
+            <button type="button" onClick={() => setSettingsOpen(true)}>
+              {connectors.length === 1
+                ? "1 Device"
+                : `${connectors.length} Devices`}
+            </button>
+          </div>
         </aside>
 
-        <section className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
-          <div className="border-b p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold">Sessions</h2>
-              <Badge variant="outline">{visibleAgentSessions.length}</Badge>
-            </div>
-            <p className="mt-1 truncate text-xs text-muted-foreground">
-              {selectedConnector?.displayName ?? "Select a device"}
-            </p>
-          </div>
+        <section className="session-workspace" aria-label="Session workspace">
+          {!selectedAgentSession
+            ? (
+                <div className="workspace-empty">
+                  <RelayMark />
+                  <h2>Select a Session to continue</h2>
+                  <p>
+                    The Session list keeps work from every Device in one place.
+                  </p>
+                </div>
+              )
+            : (
+                <>
+                  <div className="mobile-session-meta">
+                    <div>
+                      <h1>{sessionLabel(selectedAgentSession)}</h1>
+                      <span>
+                        {selectedConnector?.displayName ?? "Unknown device"}
+                      </span>
+                    </div>
+                    <SessionStatus status={selectedAgentSession.status} />
+                  </div>
 
-          {selectedConnector?.capabilities.createSession && (
-            <form
-              className="grid gap-2 border-b bg-muted/35 p-4"
-              onSubmit={(event) => void createAgentSession(event)}
+                  <div className="transcript-scroll">
+                    <div className="transcript">
+                      <div className="transcript-origin">
+                        <span>Session opened</span>
+                        <time dateTime={selectedAgentSession.createdAt}>
+                          {formatTime(selectedAgentSession.createdAt)}
+                        </time>
+                        <span>
+                          on {selectedConnector?.displayName ?? "Unknown device"}
+                        </span>
+                      </div>
+
+                      {events.length === 0 && (
+                        <div className="transcript-empty" role="status">
+                          {selectedConnector?.status === "offline"
+                            ? <WifiOff aria-hidden="true" />
+                            : <LoaderCircle className="animate-spin" aria-hidden="true" />}
+                          <strong>
+                            {selectedConnector?.status === "offline"
+                              ? "Device is offline"
+                              : "Waiting for activity"}
+                          </strong>
+                          <span>
+                            {selectedConnector?.status === "offline"
+                              ? "Recent events remain available. Reconnect the Device to continue."
+                              : "Events will appear here as the agent works."}
+                          </span>
+                        </div>
+                      )}
+
+                      {events.map((event) =>
+                        event.type === "message"
+                          ? (
+                              <article
+                                key={event.id}
+                                className={`conversation-message message-${event.role ?? "system"}`}
+                              >
+                                <header>
+                                  <strong>{eventLabel(event)}</strong>
+                                  <time dateTime={event.createdAt}>
+                                    {formatTime(event.createdAt)}
+                                  </time>
+                                </header>
+                                <p>{eventBody(event)}</p>
+                              </article>
+                            )
+                          : (
+                              <div
+                                key={event.id}
+                                className="activity-event"
+                                data-type={event.type}
+                              >
+                                <span
+                                  className="activity-event-marker"
+                                  aria-hidden="true"
+                                />
+                                <div>
+                                  <strong>{eventLabel(event)}</strong>
+                                  <pre>{eventBody(event)}</pre>
+                                </div>
+                                <time dateTime={event.createdAt}>
+                                  {formatRelativeTime(event.createdAt)}
+                                </time>
+                              </div>
+                            )
+                      )}
+                    </div>
+                  </div>
+
+                  <form className="session-composer" onSubmit={sendFollowUp}>
+                    <div className="composer-status" aria-live="polite">
+                      {trackedCommand
+                        ? (
+                            <>
+                              <LoaderCircle
+                                className="animate-spin"
+                                aria-hidden="true"
+                              />
+                              {trackedCommand.label} {trackedCommand.status}
+                            </>
+                          )
+                        : selectedConnector?.status === "offline"
+                        ? (
+                            <>
+                              <WifiOff aria-hidden="true" />
+                              Reconnect {selectedConnector.displayName} to send
+                              a follow-up.
+                            </>
+                          )
+                        : (
+                            <span>
+                              Shift+Enter for a new line
+                            </span>
+                          )}
+                    </div>
+                    <label htmlFor="session-follow-up" className="sr-only">
+                      Follow-up message
+                    </label>
+                    <Textarea
+                      id="session-follow-up"
+                      value={followUp}
+                      onChange={(event) => setFollowUp(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === "Enter"
+                          && !event.shiftKey
+                          && !event.nativeEvent.isComposing
+                        ) {
+                          event.preventDefault()
+                          event.currentTarget.form?.requestSubmit()
+                        }
+                      }}
+                      placeholder={
+                        canSendFollowUp
+                          ? "Ask for the next step..."
+                          : "This Session cannot receive messages right now"
+                      }
+                      rows={2}
+                      disabled={!canSendFollowUp}
+                    />
+                    <Button
+                      type="submit"
+                      size="icon"
+                      className="composer-send"
+                      disabled={
+                        !followUp.trim()
+                        || !canSendFollowUp
+                        || busyAction === "send-message"
+                        || Boolean(trackedCommand)
+                      }
+                    >
+                      {busyAction === "send-message"
+                        ? (
+                            <LoaderCircle
+                              className="animate-spin"
+                              aria-hidden="true"
+                            />
+                          )
+                        : <Send aria-hidden="true" />}
+                      <span className="sr-only">Send follow-up</span>
+                    </Button>
+                  </form>
+                </>
+              )}
+        </section>
+      </main>
+
+      <div className="relay-notifications" aria-live="polite">
+        {error && (
+          <div className="relay-notice is-error" role="alert">
+            <CircleAlert aria-hidden="true" />
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              aria-label="Dismiss error"
             >
+              <X aria-hidden="true" />
+            </button>
+          </div>
+        )}
+        {!error && notice && (
+          <div className="relay-notice is-success" role="status">
+            {trackedCommand
+              ? <LoaderCircle className="animate-spin" aria-hidden="true" />
+              : <Check aria-hidden="true" />}
+            <span>{notice}</span>
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              aria-label="Dismiss notification"
+            >
+              <X aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <Dialog open={newSessionOpen} onOpenChange={setNewSessionOpen}>
+        <DialogContent className="new-session-dialog">
+          <DialogHeader>
+            <DialogTitle>Start a new Session</DialogTitle>
+            <DialogDescription>
+              Choose the Device that will own this agent Session, then give it
+              the first instruction.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="dialog-form" onSubmit={createAgentSession}>
+            <label className="field-stack">
+              <span>Device</span>
+              <select
+                value={newSessionConnectorId ?? ""}
+                onChange={(event) =>
+                  setNewSessionConnectorId(event.target.value || null)}
+                disabled={onlineCreateConnectors.length === 0}
+                required
+              >
+                <option value="" disabled>Select an online Device</option>
+                {onlineCreateConnectors.map((connector) => (
+                  <option key={connector.id} value={connector.id}>
+                    {connector.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {onlineCreateConnectors.length === 0 && (
+              <div className="inline-callout">
+                <WifiOff aria-hidden="true" />
+                No online Device currently supports Session creation.
+              </div>
+            )}
+            <label className="field-stack">
+              <span>Title <small>Optional</small></span>
               <Input
-                aria-label="New session title"
-                placeholder="Optional title"
                 value={sessionTitle}
-                maxLength={256}
-                disabled={selectedConnector.status !== "online"}
                 onChange={(event) => setSessionTitle(event.target.value)}
+                placeholder="Review the release plan"
               />
+            </label>
+            <label className="field-stack">
+              <span>First instruction</span>
               <Textarea
-                aria-label="New session prompt"
-                placeholder="What should Copilot work on?"
                 value={sessionPrompt}
-                maxLength={32_000}
-                disabled={selectedConnector.status !== "online"}
                 onChange={(event) => setSessionPrompt(event.target.value)}
+                placeholder="Describe the outcome you want from the agent..."
+                rows={5}
+                required
               />
+            </label>
+            <DialogFooter className="dialog-actions">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setNewSessionOpen(false)}
+              >
+                Cancel
+              </Button>
               <Button
                 type="submit"
                 disabled={
-                  selectedConnector.status !== "online"
+                  !newSessionConnector
                   || !sessionPrompt.trim()
                   || busyAction === "create-session"
+                  || Boolean(trackedCommand)
                 }
               >
                 {busyAction === "create-session"
-                  ? "Sending request…"
-                  : "Create session"}
+                  ? (
+                      <LoaderCircle
+                        className="animate-spin"
+                        aria-hidden="true"
+                      />
+                    )
+                  : <Plus aria-hidden="true" />}
+                Start Session
               </Button>
-            </form>
-          )}
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-          <div className="max-h-96 flex-1 overflow-y-auto p-2 lg:max-h-none">
-            {selectedConnector && visibleAgentSessions.length === 0 && (
-              <p className="p-4 text-sm leading-6 text-muted-foreground">
-                No sessions reported by this connector yet.
-              </p>
-            )}
-            {!selectedConnector && (
-              <p className="p-4 text-sm text-muted-foreground">
-                Select a device to see its sessions.
-              </p>
-            )}
-            {visibleAgentSessions.map((agentSession) => (
-              <button
-                key={agentSession.id}
-                type="button"
-                aria-pressed={agentSession.id === selectedSessionId}
-                className="session-item"
-                onClick={() => setSelectedSessionId(agentSession.id)}
-              >
-                <span className="flex items-center justify-between gap-3">
-                  <span className="truncate font-medium">
-                    {sessionLabel(agentSession)}
-                  </span>
-                  <span className={`session-state session-state-${agentSession.status}`}>
-                    {agentSession.status}
-                  </span>
-                </span>
-                <span className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                  {agentSession.lastMessagePreview ?? agentSession.id}
-                </span>
-                <span className="mt-2 block text-[0.7rem] text-muted-foreground">
-                  {formatTime(agentSession.lastActivityAt)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="settings-dialog">
+          <DialogHeader className="settings-dialog-header">
+            <DialogTitle>Account and connections</DialogTitle>
+            <DialogDescription>
+              Manage Devices, connection tokens, identities, and signed-in
+              browsers without leaving the current Session.
+            </DialogDescription>
+          </DialogHeader>
 
-        <section className="flex min-h-[32rem] min-w-0 flex-col">
-          <div className="flex items-start justify-between gap-4 border-b p-5">
-            <div className="min-w-0">
-              <h2 className="truncate font-semibold">
-                {selectedAgentSession
-                  ? sessionLabel(selectedAgentSession)
-                  : "Session activity"}
-              </h2>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {selectedAgentSession?.id
-                  ?? "Choose a session to inspect its live activity."}
-              </p>
-            </div>
-            {selectedAgentSession && (
-              <Badge variant="outline">{selectedAgentSession.status}</Badge>
-            )}
-          </div>
-
-          <div
-            aria-live="polite"
-            className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-7"
-          >
-            {!selectedAgentSession && (
-              <div className="flex h-full min-h-64 items-center justify-center">
-                <p className="max-w-xs text-center text-sm leading-6 text-muted-foreground">
-                  Activity, messages, tool calls, and status changes appear
-                  here as the local agent works.
-                </p>
-              </div>
-            )}
-            {selectedAgentSession && visibleEvents.length === 0 && (
-              <div className="flex h-full min-h-64 items-center justify-center">
-                <p className="text-sm text-muted-foreground">
-                  {canSyncSelectedHistory
-                    ? "Loading session history from this device."
-                    : "No session activity has been synced."}
-                </p>
-              </div>
-            )}
-            <div className="activity-stream">
-              {visibleEvents.map((event) => (
-                <article
-                  key={event.id}
-                  className="activity-entry"
-                  data-event-type={event.type}
-                >
-                  <span className="activity-marker" aria-hidden="true" />
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-xs font-semibold">
-                      {eventLabel(event)}
-                    </span>
-                    <time className="text-[0.7rem] text-muted-foreground">
-                      {formatTime(event.createdAt)}
-                    </time>
-                  </div>
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-6">
-                    {event.text ?? "Activity reported without text."}
+          <div className="settings-scroll">
+            <Card className="settings-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Laptop aria-hidden="true" />
+                  Connected Devices
+                </CardTitle>
+                <CardDescription>
+                  Each Agent Session belongs to exactly one of these Devices.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="settings-list">
+                {connectors.length === 0 && (
+                  <p className="settings-empty">
+                    No Device has connected to this account yet.
                   </p>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          {selectedAgentSession && (
-            <form
-              className="border-t bg-muted/30 p-4 sm:p-5"
-              onSubmit={(event) => void sendFollowUp(event)}
-            >
-              <label className="mb-2 block text-xs font-medium" htmlFor="follow-up">
-                Continue this session
-              </label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Textarea
-                  id="follow-up"
-                  className="min-h-10 flex-1"
-                  placeholder="Send a follow-up to Copilot"
-                  value={followUp}
-                  maxLength={32_000}
-                  disabled={
-                    selectedConnector?.status !== "online"
-                    || !selectedConnector.capabilities.sendMessage
-                  }
-                  onChange={(event) => setFollowUp(event.target.value)}
-                />
-                <Button
-                  type="submit"
-                  className="sm:self-end"
-                  disabled={
-                    selectedConnector?.status !== "online"
-                    || !selectedConnector?.capabilities.sendMessage
-                    || !followUp.trim()
-                    || busyAction === "send-message"
-                  }
-                >
-                  {busyAction === "send-message" ? "Sending…" : "Send"}
-                </Button>
-              </div>
-            </form>
-          )}
-        </section>
-      </section>
-
-      <details className="settings-panel rounded-[1.25rem] border bg-card">
-        <summary className="cursor-pointer px-5 py-4 font-medium sm:px-6">
-          Connection and account settings
-        </summary>
-        <div className="grid gap-5 border-t p-5 sm:p-6 xl:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>New connection token</CardTitle>
-              <CardDescription>
-                The complete token is shown once. Store it in a protected file
-                on the connector device.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-[1fr_8rem_auto]">
-              <Input
-                aria-label="Token label"
-                value={label}
-                maxLength={80}
-                onChange={(event) => setLabel(event.target.value)}
-              />
-              <Input
-                aria-label="Expires in days"
-                value={expiresInDays}
-                inputMode="numeric"
-                onChange={(event) => setExpiresInDays(event.target.value)}
-              />
-              <Button
-                disabled={busyAction === "create-token"}
-                onClick={() => void createConnectionToken()}
-              >
-                Create token
-              </Button>
-            </CardContent>
-            {revealedToken && (
-              <CardContent className="space-y-3 border-t pt-4">
-                <p className="text-sm font-medium">Copy this token now</p>
-                <code className="block overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">
-                  {revealedToken}
-                </code>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() =>
-                      void navigator.clipboard.writeText(revealedToken)}
-                  >
-                    Copy token
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setRevealedToken(null)}
-                  >
-                    I have saved it
-                  </Button>
-                </div>
-              </CardContent>
-            )}
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Linked identities</CardTitle>
-              <CardDescription>
-                Sign-in identities are linked by provider subject, not email.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {(["google", "microsoft", "github"] as const).map((provider) => {
-                const identity = account.identities.find(
-                  (item) => item.provider === provider,
-                )
-                return (
-                  <div
-                    key={provider}
-                    className="flex items-center justify-between gap-4 border-b pb-3 last:border-0 last:pb-0"
-                  >
-                    <div>
-                      <p className="font-medium">{providerLabels[provider]}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {identity?.email
-                          ?? (identity ? "No email shared" : "Not linked")}
-                      </p>
-                    </div>
-                    {identity ? (
-                      account.identities.length > 1
-                        ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => void unlinkIdentity(provider)}
-                            >
-                              Unlink
-                            </Button>
-                          )
-                        : <Badge variant="secondary">Linked</Badge>
-                    ) : (
-                      <Button asChild size="sm" variant="outline">
-                        <a href={`${relayOrigin}/auth/${provider}/start?mode=link`}>
-                          Link
-                        </a>
-                      </Button>
-                    )}
-                  </div>
-                )
-              })}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Connection tokens</CardTitle>
-              <CardDescription>
-                Revoking a token closes connectors currently using it.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {tokens.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No connection tokens yet.
-                </p>
-              )}
-              {tokens.map((token) => (
-                <div
-                  key={token.id}
-                  className="flex flex-col gap-3 border-b pb-3 last:border-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">
-                      {token.label}
-                      {token.revokedAt && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          Revoked
+                )}
+                {connectors.map((connector) => (
+                  <div className="settings-list-row" key={connector.id}>
+                    <div className="settings-row-main">
+                      <span
+                        className="connector-status-dot"
+                        data-status={connector.status}
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <strong>{connector.displayName}</strong>
+                        <span>
+                          {connector.agent
+                            ? `${connector.agent.name}${connector.agent.version ? ` ${connector.agent.version}` : ""}`
+                            : "Connector identity pending"}
                         </span>
-                      )}
-                    </p>
-                    <p className="mt-1 font-mono text-xs text-muted-foreground">
-                      smr1_{token.id}_••••{token.tokenHint}
-                    </p>
-                  </div>
-                  {!token.revokedAt && (
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void rotateConnectionToken(token.id)}
-                      >
-                        Rotate
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => void revokeConnectionToken(token.id)}
-                      >
-                        Revoke
-                      </Button>
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Browser sessions</CardTitle>
-              <CardDescription>
-                Revoke signed-in browsers you no longer recognize.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {browserSessions
-                .filter((session) => !session.revokedAt)
-                .map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center justify-between gap-4 border-b pb-3 last:border-0 last:pb-0"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {session.userAgent ?? "Unknown browser"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Expires {formatTime(session.expiresAt)}
-                      </p>
+                    <div className="settings-row-meta">
+                      <Badge variant="outline">{connector.status}</Badge>
+                      <span>
+                        {connector.sessionCount}{" "}
+                        {connector.sessionCount === 1 ? "Session" : "Sessions"}
+                      </span>
                     </div>
-                    {session.current ? (
-                      <Badge>Current</Badge>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void revokeBrowserSession(session.id)}
-                      >
-                        Revoke
-                      </Button>
-                    )}
                   </div>
                 ))}
-            </CardContent>
-          </Card>
-        </div>
-      </details>
-    </Shell>
+              </CardContent>
+            </Card>
+
+            <Card className="settings-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <KeyRound aria-hidden="true" />
+                  Connection tokens
+                </CardTitle>
+                <CardDescription>
+                  Create a token for a Device. The full value appears once.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-5">
+                <div className="token-create-grid">
+                  <label className="field-stack">
+                    <span>Label</span>
+                    <Input
+                      value={label}
+                      onChange={(event) => setLabel(event.target.value)}
+                    />
+                  </label>
+                  <label className="field-stack">
+                    <span>Expires in days</span>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={expiresInDays}
+                      onChange={(event) => setExpiresInDays(event.target.value)}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    onClick={() => void createConnectionToken()}
+                    disabled={busyAction === "create-token" || !label.trim()}
+                  >
+                    {busyAction === "create-token"
+                      ? (
+                          <LoaderCircle
+                            className="animate-spin"
+                            aria-hidden="true"
+                          />
+                        )
+                      : <Plus aria-hidden="true" />}
+                    Create token
+                  </Button>
+                </div>
+
+                {revealedToken && (
+                  <div className="token-reveal">
+                    <div>
+                      <strong>Copy this token now</strong>
+                      <span>It will not be shown again after you close it.</span>
+                    </div>
+                    <code>{revealedToken}</code>
+                    <div className="token-reveal-actions">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => void copyRevealedToken()}
+                      >
+                        <Copy aria-hidden="true" />
+                        Copy
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setRevealedToken(null)}
+                      >
+                        Hide
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="settings-list">
+                  {tokens.filter((token) => !token.revokedAt).length === 0 && (
+                    <p className="settings-empty">
+                      No active connection tokens.
+                    </p>
+                  )}
+                  {tokens
+                    .filter((token) => !token.revokedAt)
+                    .map((token) => (
+                      <div className="settings-list-row" key={token.id}>
+                        <div>
+                          <strong>{token.label}</strong>
+                          <span>
+                            {token.tokenHint} · Last used{" "}
+                            {formatTime(token.lastUsedAt)}
+                          </span>
+                        </div>
+                        <div className="settings-row-actions">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void rotateConnectionToken(token.id)}
+                          >
+                            Rotate
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void revokeConnectionToken(token.id)}
+                          >
+                            Revoke
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="settings-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck aria-hidden="true" />
+                  Linked identities
+                </CardTitle>
+                <CardDescription>
+                  Keep at least one provider linked to sign in.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <div className="settings-list">
+                  {account.identities.map((identity) => (
+                    <div
+                      className="settings-list-row"
+                      key={identity.provider}
+                    >
+                      <div>
+                        <strong>{providerLabels[identity.provider]}</strong>
+                        <span>
+                          {identity.email
+                            ?? identity.displayName
+                            ?? "No profile email"}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={account.identities.length <= 1}
+                        onClick={() => void unlinkIdentity(identity.provider)}
+                      >
+                        Unlink
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="provider-links">
+                  {(["google", "microsoft", "github"] as const)
+                    .filter(
+                      (provider) =>
+                        !account.identities.some(
+                          (identity) => identity.provider === provider,
+                        ),
+                    )
+                    .map((provider) => (
+                      <Button key={provider} asChild variant="outline" size="sm">
+                        <a
+                          href={`${relayOrigin}/auth/${provider}/start?mode=link`}
+                        >
+                          <Link2 aria-hidden="true" />
+                          Link {providerLabels[provider]}
+                        </a>
+                      </Button>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="settings-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <UserRound aria-hidden="true" />
+                  Browser sessions
+                </CardTitle>
+                <CardDescription>
+                  Revoke browsers that should no longer access the relay.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="settings-list">
+                {browserSessions
+                  .filter((session) => !session.revokedAt)
+                  .map((session) => (
+                    <div className="settings-list-row" key={session.id}>
+                      <div>
+                        <strong>
+                          {session.current ? "This browser" : "Signed-in browser"}
+                        </strong>
+                        <span>
+                          {session.userAgent ?? "Unknown browser"} · Expires{" "}
+                          {formatTime(session.expiresAt)}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={session.current ? "destructive" : "outline"}
+                        onClick={() => void revokeBrowserSession(session.id)}
+                      >
+                        {session.current ? "Sign out here" : "Revoke"}
+                      </Button>
+                    </div>
+                  ))}
+              </CardContent>
+            </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function RelayMark({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      className={`relay-mark${compact ? " is-compact" : ""}`}
+      aria-hidden="true"
+    >
+      <span />
+      <span />
+    </span>
+  )
+}
+
+function SessionStatus({ status }: { status: string }) {
+  return (
+    <span className="session-status" data-status={status}>
+      <span aria-hidden="true" />
+      {status}
+    </span>
   )
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto flex max-w-[100rem] flex-col gap-6 px-4 py-5 sm:px-7 sm:py-8">
+    <main className="min-h-screen bg-[var(--relay-paper)] px-4 py-6 text-foreground sm:px-8 sm:py-10">
+      <div className="mx-auto flex w-full max-w-[88rem] flex-col gap-6">
         {children}
       </div>
     </main>
