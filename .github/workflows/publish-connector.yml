@@ -1,0 +1,45 @@
+name: Publish connector
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-connector
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @silvermoon-ai/connector test
+      - run: pnpm --filter @silvermoon-ai/connector typecheck
+      - run: pnpm --filter @silvermoon-ai/connector build
+      - name: Pack connector
+        shell: bash
+        run: |
+          mkdir artifacts
+          pnpm --filter @silvermoon-ai/connector pack \
+            --pack-destination "$GITHUB_WORKSPACE/artifacts"
+      - name: Publish connector
+        shell: bash
+        run: |
+          version="$(node -p "require('./packages/connector/package.json').version")"
+          npm publish \
+            "artifacts/silvermoon-ai-connector-${version}.tgz" \
+            --access public \
+            --provenance \
+            --registry=https://registry.npmjs.org/
