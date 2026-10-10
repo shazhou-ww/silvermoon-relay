@@ -21,6 +21,7 @@ describe("parseCliOptions", () => {
       tokenFile: undefined,
       workingDirectory: undefined,
       copilotHome: undefined,
+      vscodeUserDataDirectory: undefined,
       model: undefined,
       approveAllPermissions: true,
     });
@@ -33,11 +34,13 @@ describe("parseCliOptions", () => {
       SILVERMOON_CONNECTION_TOKEN_FILE: "C:\\secrets\\relay-token",
       SILVERMOON_COPILOT_HOME: "C:\\copilot",
       SILVERMOON_COPILOT_MODEL: "gpt-5",
+      SILVERMOON_VSCODE_USER_DATA_DIR: "C:\\vscode-data",
     })).toMatchObject({
       connectorId: "desktop:copilot",
       relayUrl: "http://localhost:8787",
       tokenFile: "C:\\secrets\\relay-token",
       copilotHome: "C:\\copilot",
+      vscodeUserDataDirectory: "C:\\vscode-data",
       model: "gpt-5",
       approveAllPermissions: false,
     });

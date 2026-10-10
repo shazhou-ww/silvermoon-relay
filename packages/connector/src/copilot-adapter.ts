@@ -13,6 +13,8 @@ import type {
   SessionStatus,
 } from "@silvermoon-ai/protocol";
 import type { AgentAdapter, AgentAdapterEvent } from "./adapter.js";
+import type { AgentHostSessionProvider } from "./agent-host-provider.js";
+import { VsCodeAgentHostProvider } from "./vscode-agent-host-provider.js";
 
 interface CopilotSessionHandle {
   readonly sessionId: string;
@@ -47,6 +49,8 @@ export interface CopilotAgentAdapterOptions {
   model?: string;
   approveAllPermissions?: boolean;
   client?: CopilotClientHandle;
+  agentHostProvider?: AgentHostSessionProvider | false;
+  vscodeUserDataDirectory?: string;
   log?: (message: string) => void;
 }
 
@@ -94,7 +98,11 @@ export class CopilotAgentAdapter implements AgentAdapter {
   private readonly client: CopilotClientHandle;
   private readonly listeners = new Set<(event: AgentAdapterEvent) => void>();
   private readonly active = new Map<string, ActiveSession>();
+  private readonly persisted = new Map<string, AgentSession>();
+  private readonly hosted = new Map<string, AgentSession>();
   private readonly log: (message: string) => void;
+  private readonly agentHostProvider: AgentHostSessionProvider | null;
+  private readonly unsubscribeAgentHost: () => void;
   private started = false;
 
   constructor(private readonly options: CopilotAgentAdapterOptions = {}) {
@@ -107,13 +115,42 @@ export class CopilotAgentAdapter implements AgentAdapter {
       },
     });
     this.log = options.log ?? ((message) => console.error(message));
+    this.agentHostProvider = options.agentHostProvider === false
+      ? null
+      : options.agentHostProvider ?? new VsCodeAgentHostProvider({
+        userDataDirectory: options.vscodeUserDataDirectory,
+        log: this.log,
+      });
+    this.unsubscribeAgentHost = this.agentHostProvider?.subscribe((event) => {
+      this.handleAgentHostEvent(event);
+    }) ?? (() => {});
   }
 
   async listSessions(): Promise<AgentSession[]> {
     await this.ensureStarted();
-    const sessions = await this.client.listSessions();
-    return sessions.map((metadata) =>
-      this.active.get(metadata.sessionId)?.summary ?? metadataSummary(metadata)
+    const [sessions, hostedSessions] = await Promise.all([
+      this.client.listSessions(),
+      this.agentHostProvider?.listSessions() ?? Promise.resolve([]),
+    ]);
+    this.persisted.clear();
+    for (const metadata of sessions) {
+      this.persisted.set(metadata.sessionId, metadataSummary(metadata));
+    }
+    this.hosted.clear();
+    for (const session of hostedSessions) {
+      this.hosted.set(session.id, session);
+    }
+
+    const merged = new Map(this.persisted);
+    for (const [sessionId, active] of this.active) {
+      merged.set(sessionId, active.summary);
+    }
+    for (const [sessionId, session] of this.hosted) {
+      merged.set(sessionId, session);
+    }
+    return [...merged.values()].sort(
+      (left, right) =>
+        Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
     );
   }
 
@@ -143,6 +180,10 @@ export class CopilotAgentAdapter implements AgentAdapter {
     message: string;
   }): Promise<void> {
     await this.ensureStarted();
+    if (this.agentHostProvider?.hasSession(input.sessionId)) {
+      await this.agentHostProvider.sendMessage(input);
+      return;
+    }
     const active = await this.activeSession(input.sessionId);
     this.updateSummary(active, {
       status: "running",
@@ -156,6 +197,9 @@ export class CopilotAgentAdapter implements AgentAdapter {
     sessionId: string,
   ): Promise<AgentSessionEvent[]> {
     await this.ensureStarted();
+    if (this.agentHostProvider?.hasSession(sessionId)) {
+      return this.agentHostProvider.loadSessionHistory(sessionId);
+    }
     const active = await this.activeSession(sessionId);
     const result: AgentSessionEvent[] = [];
     let previousSequence = 0;
@@ -181,16 +225,25 @@ export class CopilotAgentAdapter implements AgentAdapter {
   }
 
   async close(): Promise<void> {
+    this.unsubscribeAgentHost();
+    let agentHostError: unknown;
+    try {
+      await this.agentHostProvider?.close();
+    } catch (error) {
+      agentHostError = error;
+    }
     for (const active of this.active.values()) {
       active.unsubscribe();
     }
     this.active.clear();
-    if (!this.started) return;
-    const errors = await this.client.stop();
-    this.started = false;
-    for (const error of errors) {
-      this.log(`Copilot shutdown error: ${error.message}`);
+    if (this.started) {
+      const errors = await this.client.stop();
+      this.started = false;
+      for (const error of errors) {
+        this.log(`Copilot shutdown error: ${error.message}`);
+      }
     }
+    if (agentHostError) throw agentHostError;
   }
 
   private async ensureStarted(): Promise<void> {
@@ -254,6 +307,7 @@ export class CopilotAgentAdapter implements AgentAdapter {
     active: ActiveSession,
     event: SessionEvent,
   ): void {
+    if (this.agentHostProvider?.hasSession(active.session.sessionId)) return;
     const sessionEvent = this.mapCopilotEvent(active, event, true);
     if (!sessionEvent) return;
     const sequence = sequenceFor(event.timestamp, active.lastSequence);
@@ -397,6 +451,26 @@ export class CopilotAgentAdapter implements AgentAdapter {
 
   private emit(event: AgentAdapterEvent): void {
     for (const listener of this.listeners) listener(event);
+  }
+
+  private handleAgentHostEvent(event: AgentAdapterEvent): void {
+    if (event.type === "session.event") {
+      this.emit(event);
+      return;
+    }
+    if (event.session.status !== "gone") {
+      this.hosted.set(event.session.id, event.session);
+      this.emit(event);
+      return;
+    }
+
+    this.hosted.delete(event.session.id);
+    const fallback = this.persisted.get(event.session.id)
+      ?? this.active.get(event.session.id)?.summary;
+    this.emit({
+      type: "session.updated",
+      session: fallback ?? event.session,
+    });
   }
 }
 

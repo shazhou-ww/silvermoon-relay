@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@github/copilot-sdk": "^1.0.19",
+    "@microsoft/agent-host-protocol": "^1.0.0",
     "@silvermoon-ai/protocol": "workspace:*",
     "@silvermoon-ai/rpc": "workspace:*",
     "@trpc/client": "^11.19.0",
