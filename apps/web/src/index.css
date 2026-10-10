@@ -724,12 +724,40 @@ textarea:focus-visible {
   display: none;
 }
 
+.transcript-shell {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding-bottom: 4rem;
+}
+
 .transcript-scroll {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+
+.transcript-scroll:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ring) 32%, transparent);
+  outline-offset: -3px;
+}
+
+.transcript-jump {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  z-index: 1;
+  min-height: 2.75rem;
+  max-width: calc(100% - 2rem);
+  padding-inline: 1rem;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: var(--popover);
+  box-shadow: 0 0.3rem 1rem rgb(20 32 51 / 12%);
 }
 
 .transcript {

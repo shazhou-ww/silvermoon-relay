@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { TranscriptScroll } from "@/components/transcript-scroll"
 import {
   buildTranscript,
   segmentTurnParts,
@@ -180,6 +181,7 @@ const providerLabels: Record<Provider, string> = {
 }
 
 const attentionStatuses = new Set(["waiting", "failed", "gone", "unknown"])
+const emptyEvents: AgentSessionEvent[] = []
 
 function csrfToken(): string {
   const item = document.cookie
@@ -529,7 +531,10 @@ function App() {
   const [browserSessions, setBrowserSessions] = useState<BrowserSession[]>([])
   const [connectors, setConnectors] = useState<Connector[]>([])
   const [agentSessions, setAgentSessions] = useState<AgentSession[]>([])
-  const [events, setEvents] = useState<AgentSessionEvent[]>([])
+  const [history, setHistory] = useState<{
+    key: string
+    events: AgentSessionEvent[]
+  } | null>(null)
   const [selection, setSelection] = useState<SessionSelection | null>(
     () => selectionFromLocation(),
   )
@@ -564,6 +569,9 @@ function App() {
   const followUpInputRef = useRef<HTMLTextAreaElement>(null)
   const selectedConnectorId = selection?.connectorId ?? null
   const selectedSessionId = selection?.sessionId ?? null
+  const selectionKey = JSON.stringify([selectedConnectorId, selectedSessionId])
+  const events = history?.key === selectionKey ? history.events : emptyEvents
+  const accountSessionId = account?.sessionId
   const connectorIdKey = useMemo(
     () => connectors.map((connector) => connector.id).sort().join("|"),
     [connectors],
@@ -808,7 +816,44 @@ function App() {
 
   useEffect(() => {
     if (
-      !account
+      !accountSessionId
+      || !selectedConnectorId
+      || !selectedSessionId
+      || !selectedSessionAvailable
+      || !canSyncSelectedHistory
+    ) {
+      return
+    }
+    let active = true
+    const connectorId = encodeURIComponent(selectedConnectorId)
+    const sessionId = encodeURIComponent(selectedSessionId)
+    const requestHistory = async () => {
+      if (historyRequests.current.has(selectionKey)) return
+      historyRequests.current.add(selectionKey)
+      try {
+        await api(
+          `/api/connectors/${connectorId}/sessions/${sessionId}/events/sync`,
+          { method: "POST" },
+        )
+      } catch (caught) {
+        historyRequests.current.delete(selectionKey)
+        if (active && caught instanceof Error) setError(caught.message)
+      }
+    }
+    void requestHistory()
+    return () => { active = false }
+  }, [
+    accountSessionId,
+    canSyncSelectedHistory,
+    selectedConnectorId,
+    selectedSessionAvailable,
+    selectedSessionId,
+    selectionKey,
+  ])
+
+  useEffect(() => {
+    if (
+      !accountSessionId
       || !selectedConnectorId
       || !selectedSessionId
       || !selectedSessionAvailable
@@ -818,26 +863,8 @@ function App() {
     let active = true
     let after = -1
     let loadedEvents: AgentSessionEvent[] = []
-    // oxlint-disable-next-line react/set-state-in-effect -- Clear stale events before polling a new composite selection.
-    setEvents([])
     const connectorId = encodeURIComponent(selectedConnectorId)
     const sessionId = encodeURIComponent(selectedSessionId)
-    const requestKey = `${selectedConnectorId}:${selectedSessionId}`
-    const requestHistory = async () => {
-      if (!canSyncSelectedHistory || historyRequests.current.has(requestKey)) {
-        return
-      }
-      historyRequests.current.add(requestKey)
-      try {
-        await api(
-          `/api/connectors/${connectorId}/sessions/${sessionId}/events/sync`,
-          { method: "POST" },
-        )
-      } catch (caught) {
-        historyRequests.current.delete(requestKey)
-        if (active && caught instanceof Error) setError(caught.message)
-      }
-    }
     const poll = async () => {
       try {
         const result = await api<{
@@ -851,12 +878,11 @@ function App() {
           loadedEvents = [...loadedEvents, ...result.events]
           after = result.nextAfter
         }
-        setEvents(loadedEvents)
+        setHistory({ key: selectionKey, events: loadedEvents })
       } catch (caught) {
         if (active && caught instanceof Error) setError(caught.message)
       }
     }
-    void requestHistory()
     void poll()
     const timer = window.setInterval(() => void poll(), 2_000)
     return () => {
@@ -864,11 +890,11 @@ function App() {
       window.clearInterval(timer)
     }
   }, [
-    account,
-    canSyncSelectedHistory,
+    accountSessionId,
     selectedConnectorId,
     selectedSessionAvailable,
     selectedSessionId,
+    selectionKey,
   ])
 
   const connectorById = useMemo(
@@ -1113,7 +1139,7 @@ function App() {
     setConnectors([])
     setAgentSessions([])
     setSessionsLoadedForKey(null)
-    setEvents([])
+    setHistory(null)
     setShowToolEvents(false)
     setSelection(null)
     setTrackedCommand(null)
@@ -1511,8 +1537,7 @@ function App() {
                     <SessionStatus status={selectedAgentSession.status} />
                   </div>
 
-                  <div className="transcript-scroll">
-                    <div className="transcript">
+                  <TranscriptScroll key={selectionKey}>
                       <div className="transcript-origin">
                         <span>Session opened</span>
                         <time dateTime={selectedAgentSession.createdAt}>
@@ -1585,8 +1610,7 @@ function App() {
                               />
                             )
                       )}
-                    </div>
-                  </div>
+                  </TranscriptScroll>
 
                   <div className="session-composer-shell">
                     <form className="session-composer" onSubmit={sendFollowUp}>

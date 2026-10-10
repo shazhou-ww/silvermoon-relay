@@ -25,6 +25,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm --filter @silvermoon-ai/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @silvermoon-ai/web test:browser
       - run: pnpm --filter @silvermoon-ai/worker d1:migrate:local
 
   deploy:
