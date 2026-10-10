@@ -49,14 +49,22 @@ export interface CopilotAgentAdapterOptions {
   log?: (message: string) => void;
 }
 
+function boundedText(
+  value: string | null | undefined,
+  maxLength: number,
+): string | null {
+  const normalized = value?.trim();
+  return normalized ? normalized.slice(0, maxLength) : null;
+}
+
 function metadataSummary(metadata: SessionMetadata): AgentSession {
   return {
     id: metadata.sessionId,
-    title: metadata.summary ?? null,
+    title: boundedText(metadata.summary, 256),
     status: "idle",
     createdAt: metadata.startTime.toISOString(),
     updatedAt: metadata.modifiedTime.toISOString(),
-    lastMessagePreview: metadata.summary ?? null,
+    lastMessagePreview: boundedText(metadata.summary, 512),
   };
 }
 
@@ -303,7 +311,7 @@ export class CopilotAgentAdapter implements AgentAdapter {
         break;
       case "session.title_changed":
         this.updateSummary(active, {
-          title: event.data.title,
+          title: boundedText(event.data.title, 256),
           updatedAt,
         });
         return;
