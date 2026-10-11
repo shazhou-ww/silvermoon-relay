@@ -917,6 +917,18 @@ describe("relay identity and token service", () => {
       }],
     });
     await waitForData(10);
+    const historyAfterGone = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-existing/events`,
+      { headers: sessionHeaders(session) },
+    );
+    expect(
+      await historyAfterGone.json<{ events: Array<{ id: string }> }>(),
+    ).toMatchObject({
+      events: [
+        expect.objectContaining({ id: "history-event-1" }),
+        expect.objectContaining({ id: "history-event-2" }),
+      ],
+    });
     const currentHistorySync = await SELF.fetch(
       `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-existing/events/sync`,
       {
