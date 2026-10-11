@@ -4,6 +4,7 @@ import {
   deriveVisibleSessions,
   groupSessionsByDevice,
   orderSessionHierarchy,
+  sessionIsArchived,
   sessionKey,
   type SessionSource,
 } from "./session-list"
@@ -70,6 +71,16 @@ describe("orderSessionHierarchy", () => {
       ["child-new", 1, false],
       ["child-old", 1, false],
     ])
+  })
+
+  describe("sessionIsArchived", () => {
+    it("recognizes normalized and legacy Agent Host archive states", () => {
+      expect(sessionIsArchived({ status: "closed" })).toBe(true)
+      expect(sessionIsArchived({ status: "gone", nativeStatus: "65" }))
+        .toBe(true)
+      expect(sessionIsArchived({ status: "gone", nativeStatus: "1" }))
+        .toBe(false)
+    })
   })
 
   it("shows a child as top-level when its parent is unavailable", () => {

@@ -268,6 +268,7 @@ function subsessionId(parentSessionId: string, resource: string): string | null 
 
 function sessionStatus(status: number | undefined): SessionStatus {
   if (status === undefined) return "unknown";
+  if ((status & STATUS_ARCHIVED) !== 0) return "closed";
   if ((status & STATUS_INPUT_NEEDED) !== 0) return "waiting";
   if ((status & STATUS_IN_PROGRESS) !== 0) return "running";
   if ((status & STATUS_ERROR) !== 0) return "failed";
@@ -275,10 +276,8 @@ function sessionStatus(status: number | undefined): SessionStatus {
   return "unknown";
 }
 
-function isVisibleStatus(status: number | undefined): boolean {
-  return status === undefined
-    || (status & STATUS_ARCHIVED) === 0
-    || (status & STATUS_IN_PROGRESS) !== 0;
+function isArchivedStatus(status: number | undefined): boolean {
+  return status !== undefined && (status & STATUS_ARCHIVED) !== 0;
 }
 
 function defaultChatResource(summary: SessionSummary): string | undefined {
@@ -286,12 +285,9 @@ function defaultChatResource(summary: SessionSummary): string | undefined {
 }
 
 function canSendToChat(chat: SessionChatSummary | undefined): boolean {
-  return chat?.interactivity !== ChatInteractivity.ReadOnly
+  return !isArchivedStatus(chat?.status)
+    && chat?.interactivity !== ChatInteractivity.ReadOnly
     && chat?.interactivity !== ChatInteractivity.Hidden;
-}
-
-function isVisibleSummary(summary: SessionSummary): boolean {
-  return isVisibleStatus(summary.status);
 }
 
 function isSupportedProtocolVersion(version: string): boolean {
@@ -306,6 +302,7 @@ function sameSession(left: AgentSession, right: AgentSession): boolean {
   return left.id === right.id
     && left.title === right.title
     && left.status === right.status
+    && left.nativeStatus === right.nativeStatus
     && left.createdAt === right.createdAt
     && left.updatedAt === right.updatedAt
     && left.lastMessagePreview === right.lastMessagePreview
@@ -346,7 +343,8 @@ export function agentHostSummaryToSession(
     createdAt,
     updatedAt,
     lastMessagePreview: boundedText(summary.activity ?? summary.title, 512),
-    canSendMessage: summary.chats?.length === 0
+    canSendMessage: isArchivedStatus(summary.status)
+      || summary.chats?.length === 0
       ? false
       : canSendToChat(defaultChat),
   };
@@ -367,7 +365,6 @@ export function agentHostSummaryToSubsessions(
     if (
       chat.resource === defaultResource
       || chat.interactivity === ChatInteractivity.Hidden
-      || !isVisibleStatus(chat.status)
     ) {
       continue;
     }
@@ -1899,7 +1896,6 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
       for (const summary of connection.catalog.values()) {
         if (
           summary.provider !== COPILOT_PROVIDER
-          || !isVisibleSummary(summary)
         ) {
           continue;
         }
@@ -1947,8 +1943,16 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
         }
       }
       const now = new Date().toISOString();
+      const activeConnections = new Set(this.connections.values());
       for (const [sessionId, binding] of this.sessions) {
         if (next.has(sessionId)) continue;
+        if (
+          isArchivedStatus(binding.summary.status)
+          && activeConnections.has(binding.connection)
+        ) {
+          next.set(sessionId, binding);
+          continue;
+        }
         this.emit({
           type: "session.updated",
           session: {

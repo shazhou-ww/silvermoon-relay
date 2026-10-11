@@ -4,9 +4,9 @@
 
 ### Implementation steps
 
-- [ ] **I-S01:** 分离归档与消失语义
-- [ ] **I-S02:** 独立追踪历史新鲜度
-- [ ] **I-S03:** 呈现持久化历史与同步结果
+- [x] **I-S01:** 分离归档与消失语义
+- [x] **I-S02:** 独立追踪历史新鲜度
+- [x] **I-S03:** 呈现持久化历史与同步结果
 
 ### Implementation acceptance criteria
 

@@ -60,7 +60,11 @@ const sessions: SessionFixture[] = [
   },
 ]
 
-async function fixture(page: Page) {
+async function fixture(
+  page: Page,
+  historyCommandStatus: "succeeded" | "failed" = "succeeded",
+) {
+  let historySyncRequests = 0
   await page.route("https://relay.silvermoon.work/**", async (route) => {
     const url = new URL(route.request().url())
     const connector = (id: string, displayName: string, status = "online") => ({
@@ -96,9 +100,37 @@ async function fixture(page: Page) {
         connector("travel", "Travel laptop", "offline"),
       ]
     } else if (url.pathname.endsWith("/events/sync")) {
-      body = { command: { id: "sync", type: "sync", status: "sent" } }
+      historySyncRequests += 1
+      body = {
+        command: { id: "sync", type: "session.history", status: "sent" },
+      }
+    } else if (url.pathname === "/api/commands/sync") {
+      body = {
+        id: "sync",
+        connectorId: "studio",
+        type: "session.history",
+        sessionId: "ended",
+        status: historyCommandStatus,
+        error: historyCommandStatus === "failed"
+          ? { code: "session-not-found", message: "Archived history unavailable." }
+          : null,
+      }
     } else if (url.pathname.endsWith("/events")) {
-      body = { events: [], nextAfter: -1 }
+      body = url.pathname.includes("/sessions/ended/")
+          && url.searchParams.get("after") === "-1"
+        ? {
+            events: [{
+              id: "saved-event",
+              sessionId: "ended",
+              sequence: 1,
+              type: "message",
+              role: "assistant",
+              text: "Saved activity remains visible.",
+              createdAt: "2026-10-09T12:00:00.000Z",
+            }],
+            nextAfter: 1,
+          }
+        : { events: [], nextAfter: -1 }
     } else if (url.pathname.endsWith("/sessions")) {
       const connectorId = url.pathname.split("/")[3]
       body = sessions
@@ -109,7 +141,8 @@ async function fixture(page: Page) {
           createdAt: session.lastActivityAt,
           updatedAt: session.lastActivityAt,
           lastMessagePreview: `${session.title} preview`,
-          canSendMessage: true,
+          canSendMessage: session.status !== "closed",
+          nativeStatus: session.status === "closed" ? "65" : null,
         }))
     } else {
       throw new Error(
@@ -126,6 +159,7 @@ async function fixture(page: Page) {
     ).first(),
   )
     .toBeVisible()
+  return () => historySyncRequests
 }
 
 test("status views, parent context, and hover disclosure stay coherent", async ({ page }) => {
@@ -210,4 +244,20 @@ test("mobile selection and back navigation preserve the list workflow", async ({
   await expect(page).not.toHaveURL(/connector=/u)
   await expect(page.getByText("Release desktop client", { exact: true }))
     .toBeVisible()
+})
+
+test("archived history stays visible when background sync fails", async ({ page }) => {
+  const historySyncRequests = await fixture(page, "failed")
+  await page.getByRole("button", { name: "Session view options" }).click()
+  await page.getByRole("menuitemcheckbox", { name: "Show ended" }).click()
+  await page.locator(".session-item-select").filter({
+    hasText: "Completed migration",
+  }).click()
+
+  await expect(page.getByText("Saved activity remains visible.")).toBeVisible()
+  await expect(page.getByText("This Session is archived and read-only."))
+    .toBeVisible()
+  await expect(page.getByText("Archived history unavailable.")).toBeVisible()
+  await page.getByRole("button", { name: "Retry sync" }).click()
+  await expect.poll(historySyncRequests).toBeGreaterThan(1)
 })
