@@ -10,9 +10,9 @@
 
 ### Implementation acceptance criteria
 
-- [ ] **I-AC01:** 归档后历史仍可读取
-- [ ] **I-AC02:** 状态更新不使历史失效
-- [ ] **I-AC03:** 详情页反馈可区分
+- [x] **I-AC01:** 归档后历史仍可读取
+- [x] **I-AC02:** 状态更新不使历史失效
+- [x] **I-AC03:** 详情页反馈可区分
 
 ## Deployment
 
