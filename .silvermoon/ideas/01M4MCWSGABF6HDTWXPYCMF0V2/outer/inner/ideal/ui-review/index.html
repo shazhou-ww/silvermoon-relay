@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>添加设备与单连接凭据 UI 评审</title>
+  <style>
+    :root { color-scheme: light; --canvas:#f4f5f6; --surface:#fff; --ink:#1b1d1f; --muted:#62686e; --border:#d8dcdf; --accent:#176b62; --soft:#e8f3f1; }
+    * { box-sizing:border-box; }
+    html { min-width:320px; background:var(--canvas); }
+    body { min-width:320px; min-height:100vh; margin:0; color:var(--ink); background:var(--canvas); font:14px/1.5 "Segoe UI",sans-serif; }
+    a { color:var(--accent); }
+    a:focus-visible, iframe:focus-visible { outline:3px solid #9acbc5; outline-offset:2px; }
+    header, main, footer { width:min(1180px,calc(100% - 40px)); margin-inline:auto; }
+    header { display:flex; justify-content:space-between; gap:24px; padding:28px 0 20px; border-bottom:1px solid var(--border); }
+    h1 { margin:0; font-size:27px; line-height:1.2; }
+    header p { max-width:72ch; margin:6px 0 0; color:var(--muted); }
+    .status { color:var(--muted); white-space:nowrap; }
+    main { padding:20px 0 36px; }
+    .decision { display:grid; grid-template-columns:minmax(240px,.9fr) minmax(0,1.1fr); gap:24px; align-items:center; padding:16px 18px; background:var(--surface); border:1px solid var(--border); border-radius:8px; }
+    .eyebrow { margin:0 0 4px; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; }
+    h2 { margin:0; font-size:18px; }
+    .deltas { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; margin:0; padding:0; list-style:none; }
+    .deltas li { padding:5px 8px; color:#125d55; background:var(--soft); border-radius:5px; font-size:12px; font-weight:650; }
+    .frame-shell { margin-top:16px; overflow:hidden; background:var(--surface); border:1px solid var(--border); border-radius:8px; }
+    iframe { display:block; width:100%; min-height:760px; border:0; }
+    .review-end { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:20px; align-items:center; margin-top:18px; }
+    .review-end p { margin:0; color:var(--muted); }
+    footer { padding-bottom:28px; color:var(--muted); font-size:12px; }
+    @media (max-width:720px) {
+      header, main, footer { width:min(100% - 24px,1180px); }
+      header, .decision, .review-end { grid-template-columns:1fr; display:grid; }
+      .deltas { justify-content:flex-start; }
+      iframe { min-height:1280px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>添加设备与单连接凭据</h1>
+      <p>比较当前“设备列表 + 独立 token 列表”与拟议的服务端设备身份流程。</p>
+    </div>
+    <span class="status">说明性评审材料</span>
+  </header>
+  <main>
+    <section class="decision" aria-labelledby="decision-title">
+      <div>
+        <p class="eyebrow">待批准决定</p>
+        <h2 id="decision-title">是否将 token 创建收敛为“添加设备”，由服务端统一设备名称与身份？</h2>
+      </div>
+      <ul class="deltas" aria-label="关键变化">
+        <li>只命名一次</li>
+        <li>token 归属于设备</li>
+        <li>connector 不再自报 ID</li>
+      </ul>
+    </section>
+    <div class="frame-shell">
+      <iframe id="scenario-frame" src="scenarios/01-add-device.html" title="添加设备主流程对比"></iframe>
+    </div>
+    <section class="review-end" aria-label="评审结论">
+      <p>本材料仅用于说明，不是生产 UI 或规范性行为契约。规范来源：<a href="../Idea.md">Idea.md</a></p>
+      <strong>是否批准统一的“添加设备”入口与设备卡片归属？</strong>
+    </section>
+  </main>
+  <footer>升级期 successor token 不在本轮 UI 范围内；重叠连接错误可在实施阶段沿用现有通知模式。</footer>
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      frame.style.height = `${Math.max(320, Number(event.data.height) || 0)}px`;
+    });
+  </script>
+</body>
+</html>
