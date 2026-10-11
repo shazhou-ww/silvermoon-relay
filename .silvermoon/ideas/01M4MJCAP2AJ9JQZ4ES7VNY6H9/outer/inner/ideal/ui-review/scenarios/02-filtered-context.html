@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>筛选后的父级上下文</title>
+  <link rel="stylesheet" href="review.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div><h1>筛选后的父级上下文</h1><p>相同数据选择 Needs input，比较 subsession 命中后的呈现。</p></div>
+    <ul class="callouts" aria-label="可见变化"><li>父级保留但弱化</li><li>命中子项不再伪装成顶层</li><li>低频选项集中到菜单</li></ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">当前</strong><span>304px 侧栏 · 相同筛选</span></header>
+      <div class="product-surface">
+        <div class="rail">
+          <div class="rail-head"><div><h2>Sessions</h2><p>7 active threads</p></div><button class="new" aria-label="New Session">+</button></div>
+          <div class="tools"><div class="search">⌕&nbsp;&nbsp;Find a Session or Device</div><div class="filters"><span class="chip">All</span><span class="chip active">Needs attention</span></div></div>
+          <div class="list">
+            <div class="row"><span class="dot waiting"></span><div class="copy"><div class="title">Confirm signing identity</div><div class="meta">▣ Studio laptop · waiting</div><div class="preview">Waiting for the user to choose a certificate.</div></div><span class="time">4m</span></div>
+            <div class="row"><span class="dot failed"></span><div class="copy"><div class="title">Repair preview deployment</div><div class="meta">▣ Travel laptop · failed</div><div class="preview">Deployment stopped after the asset upload failed.</div></div><span class="time">1h</span></div>
+          </div>
+          <div class="footer"><span>● 2 online</span><span>3 Devices</span></div>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">拟议方向</strong><span>304px 侧栏 · Needs input</span></header>
+      <div class="product-surface">
+        <div class="rail">
+          <div class="rail-head"><div><h2>Sessions</h2><p>1 needs input</p></div><button class="new" aria-label="New Session">+</button></div>
+          <div class="tools"><div class="search">⌕&nbsp;&nbsp;Search sessions, agents, devices</div><div class="filters"><span class="chip">All</span><span class="chip">Active 2</span><span class="chip waiting">Needs input 1</span><span class="chip failed">Failed 1</span><button class="view-button" aria-label="View options">⋯</button></div></div>
+          <div class="list">
+            <div class="row context parent-tree"><span class="tree-control"><span class="dot running"></span><button class="tree-toggle" aria-label="Collapse Release desktop client">⌄</button></span><div class="copy"><div class="title-line"><span class="title">Release desktop client</span><span class="context-tag">context</span></div><div class="meta">Running · Studio laptop</div></div><span class="time">now</span></div>
+            <div class="row child selected last-tree"><span class="dot waiting"></span><div class="copy"><div class="title-line"><span class="title">Confirm signing identity</span></div><div class="meta">Needs input · Studio laptop</div><div class="preview">Waiting for the user to choose a certificate.</div></div><span class="time">4m</span></div>
+          </div>
+          <div class="menu" aria-label="View options">
+            <div><span>Show ended</span><span></span></div>
+            <div><span>Show unavailable</span><span></span></div>
+            <div><span>Group by Device</span><span class="check">✓</span></div>
+          </div>
+          <div class="footer"><span>● 2 online</span><span>3 Devices</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>function reportHeight(){window.parent.postMessage({type:"ui-review:height",height:document.documentElement.scrollHeight},"*")}new ResizeObserver(reportHeight).observe(document.documentElement);window.addEventListener("load",reportHeight);</script>
+</body>
+</html>

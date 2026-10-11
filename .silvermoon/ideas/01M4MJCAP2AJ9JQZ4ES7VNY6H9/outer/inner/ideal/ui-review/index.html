@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session 列表状态筛选与父子层级评审</title>
+  <style>
+    :root { color-scheme:light; --canvas:#f3f5f7; --surface:#fff; --ink:#17212b; --muted:#687487; --border:#d8dfe8; --accent:#3454d1; --accent-soft:#e3e8fb; }
+    * { box-sizing:border-box; }
+    html { min-width:320px; background:var(--canvas); }
+    body { min-width:320px; min-height:100vh; margin:0; color:var(--ink); background:var(--canvas); font-family:"Aptos","Segoe UI Variable Text","Segoe UI",sans-serif; font-size:14px; line-height:1.5; }
+    a { font:inherit; }
+    a:focus-visible,iframe:focus-visible { outline:3px solid color-mix(in srgb,var(--accent) 30%,transparent); outline-offset:2px; }
+    .skip { position:fixed; top:8px; left:8px; z-index:5; padding:8px 12px; color:#fff; background:var(--ink); border-radius:6px; transform:translateY(-150%); }
+    .skip:focus { transform:none; }
+    header,main,footer { width:min(1480px,calc(100% - 40px)); margin-inline:auto; }
+    .page-head { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:24px; padding:28px 0 20px; border-bottom:1px solid var(--border); }
+    h1 { margin:0; font-size:27px; line-height:1.2; }
+    .page-head p { max-width:72ch; margin:6px 0 0; color:var(--muted); }
+    .status { display:flex; align-items:center; gap:8px; color:var(--muted); white-space:nowrap; }
+    .status::before { width:8px; height:8px; background:#a86618; border-radius:50%; content:""; }
+    main { padding:20px 0 40px; }
+    .decision { display:grid; grid-template-columns:minmax(240px,.8fr) minmax(0,1.2fr); gap:24px; align-items:center; padding:16px 18px; background:var(--surface); border:1px solid var(--border); border-radius:8px; }
+    .eyebrow { margin:0 0 4px; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; }
+    h2 { margin:0; font-size:18px; line-height:1.35; }
+    .deltas { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; margin:0; padding:0; list-style:none; }
+    .deltas li { padding:5px 8px; color:#243b95; background:var(--accent-soft); border-radius:5px; font-size:12px; font-weight:650; }
+    .scenarios { margin-top:18px; }
+    .tabs { display:flex; gap:4px; padding:3px; background:#e8ecf1; border:1px solid var(--border); border-radius:7px; }
+    .tab { min-height:36px; padding:7px 12px; color:var(--muted); border-radius:5px; font-weight:650; text-decoration:none; }
+    .tab[aria-selected="true"] { color:var(--ink); background:#fff; box-shadow:0 1px 3px rgb(23 33 43 / 12%); }
+    .frame-shell { margin-top:12px; overflow:hidden; background:#fff; border:1px solid var(--border); border-radius:8px; }
+    iframe { display:block; width:100%; min-height:720px; border:0; }
+    .review-end { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:20px; align-items:center; margin-top:18px; }
+    .review-end p { margin:0; color:var(--muted); }
+    .review-end strong { color:var(--ink); }
+    .source { color:var(--accent); }
+    footer { padding-bottom:28px; color:var(--muted); font-size:12px; }
+    @media (max-width:720px) {
+      header,main,footer { width:min(100% - 24px,1480px); }
+      .page-head,.decision,.review-end { grid-template-columns:1fr; }
+      .deltas { justify-content:flex-start; }
+      .tabs { display:grid; grid-template-columns:1fr; }
+      iframe { min-height:1000px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#review">跳到评审内容</a>
+  <header class="page-head">
+    <div>
+      <h1>Session 列表状态筛选与父子层级</h1>
+      <p>比较当前单一时间流与拟议的动态状态视图、紧凑树形层级和低频视图选项。</p>
+    </div>
+    <span class="status">说明性评审材料</span>
+  </header>
+  <main id="review">
+    <section class="decision" aria-labelledby="decision-title">
+      <div><p class="eyebrow">请求决定</p><h2 id="decision-title">是否接受紧凑树形列表与预定义状态 badge 作为后续设计方向？</h2></div>
+      <ul class="deltas" aria-label="关键变化"><li>按需状态 badge</li><li>父级上下文与树形行</li><li>低频选项收进菜单</li></ul>
+    </section>
+    <section class="scenarios" aria-label="评审场景">
+      <nav class="tabs" role="tablist" aria-label="选择场景">
+        <a class="tab" role="tab" aria-selected="true" href="scenarios/01-primary-list.html" target="scenario-frame">主列表与父子层级</a>
+        <a class="tab" role="tab" aria-selected="false" href="scenarios/02-filtered-context.html" target="scenario-frame">筛选后的父级上下文</a>
+      </nav>
+      <div class="frame-shell"><iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-primary-list.html" title="主列表与父子层级对比"></iframe></div>
+    </section>
+    <section class="review-end" aria-label="评审结论">
+      <p>本材料仅用于说明设计，不是生产 UI 或规范性行为契约。<a class="source" href="../Idea.md">查看规范来源</a></p>
+      <strong>是否批准这一列表方向继续细化？</strong>
+    </section>
+  </main>
+  <footer>未决风险：折叠默认值、行内预览密度和移动端细节仍需在实施前确认。</footer>
+  <script>
+    const frame=document.querySelector("#scenario-frame");const tabs=[...document.querySelectorAll(".tab")];
+    function selectTab(tab){tabs.forEach((item)=>item.setAttribute("aria-selected",String(item===tab)));frame.title=`${tab.textContent.trim()}对比`}
+    tabs.forEach((tab,index)=>{tab.addEventListener("click",()=>selectTab(tab));tab.addEventListener("keydown",(event)=>{let next=null;if(event.key==="ArrowRight")next=(index+1)%tabs.length;if(event.key==="ArrowLeft")next=(index-1+tabs.length)%tabs.length;if(event.key==="Home")next=0;if(event.key==="End")next=tabs.length-1;if(next===null)return;event.preventDefault();tabs[next].click();tabs[next].focus()})});
+    window.addEventListener("message",(event)=>{if(event.source!==frame.contentWindow||event.data?.type!=="ui-review:height")return;frame.style.height=`${Math.max(320,Number(event.data.height)||0)}px`});
+  </script>
+</body>
+</html>

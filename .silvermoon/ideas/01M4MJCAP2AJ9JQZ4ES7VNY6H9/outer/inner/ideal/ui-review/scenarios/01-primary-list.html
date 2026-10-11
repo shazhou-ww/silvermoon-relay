@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>主列表与父子层级</title>
+  <link rel="stylesheet" href="review.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div><h1>主列表与父子层级</h1><p>相同的 7 个 Session、设备和状态，比较默认 All 视图。</p></div>
+    <ul class="callouts" aria-label="可见变化"><li>状态视图按需出现并计数</li><li>Hover 状态点切换为折叠按钮</li><li>无行分割线的树形连接</li></ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">当前</strong><span>304px 侧栏 · 相同数据</span></header>
+      <div class="product-surface">
+        <div class="rail">
+          <div class="rail-head"><div><h2>Sessions</h2><p>7 active threads</p></div><button class="new" aria-label="New Session">+</button></div>
+          <div class="tools"><div class="search">⌕&nbsp;&nbsp;Find a Session or Device</div><div class="filters"><span class="chip active">All</span><span class="chip">Needs attention</span></div></div>
+          <div class="list">
+            <div class="row selected"><span class="dot running"></span><div class="copy"><div class="title">Release desktop client</div><div class="meta">▣ Studio laptop · running</div><div class="preview">Update installer checks and verify the release workflow…</div></div><span class="time">now</span></div>
+            <div class="row"><span class="dot waiting"></span><div class="copy"><div class="title">Confirm signing identity</div><div class="meta">▣ Studio laptop · waiting</div><div class="preview">Waiting for the user to choose a certificate.</div></div><span class="time">4m</span></div>
+            <div class="row"><span class="dot idle"></span><div class="copy"><div class="title">Investigate browser tests</div><div class="meta">▣ Work desktop · idle</div><div class="preview">The latest browser run completed successfully.</div></div><span class="time">18m</span></div>
+            <div class="row"><span class="dot failed"></span><div class="copy"><div class="title">Repair preview deployment</div><div class="meta">▣ Travel laptop · failed</div><div class="preview">Deployment stopped after the asset upload failed.</div></div><span class="time">1h</span></div>
+          </div>
+          <div class="footer"><span>● 2 online</span><span>3 Devices</span></div>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">拟议方向</strong><span>304px 侧栏 · 相同数据</span></header>
+      <div class="product-surface">
+        <div class="rail">
+          <div class="rail-head"><div><h2>Sessions</h2><p>7 current sessions</p></div><button class="new" aria-label="New Session">+</button></div>
+          <div class="tools"><div class="search">⌕&nbsp;&nbsp;Search sessions, agents, devices</div><div class="filters"><span class="chip active">All</span><span class="chip">Active 2</span><span class="chip waiting">Needs input 1</span><span class="chip failed">Failed 1</span><button class="view-button" aria-label="View options">⋯</button></div></div>
+          <div class="list">
+            <div class="row selected parent-tree is-hovered"><span class="tree-control"><span class="dot running"></span><button class="tree-toggle" aria-label="Collapse Release desktop client">⌄</button></span><div class="copy"><div class="title-line"><span class="title">Release desktop client</span><span class="count">2</span></div><div class="meta">Running · Studio laptop</div><div class="preview">Update installer checks and verify the release workflow…</div></div><span class="time">now</span></div>
+            <div class="row child"><span class="dot waiting"></span><div class="copy"><div class="title-line"><span class="title">Confirm signing identity</span></div><div class="meta">Needs input · Studio laptop</div></div><span class="time">4m</span></div>
+            <div class="row child last-tree"><span class="dot idle"></span><div class="copy"><div class="title-line"><span class="title">Verify update feed</span></div><div class="meta">Available · Studio laptop</div></div><span class="time">11m</span></div>
+            <div class="row parent-tree-collapsed"><span class="tree-control"><span class="dot idle"></span><button class="tree-toggle" aria-label="Expand Investigate browser tests">›</button></span><div class="copy"><div class="title-line"><span class="title">Investigate browser tests</span><span class="count">1</span></div><div class="meta">Available · Work desktop</div><div class="preview">The latest browser run completed successfully.</div></div><span class="time">18m</span></div>
+            <div class="row"><span class="dot failed"></span><div class="copy"><div class="title-line"><span class="title">Repair preview deployment</span></div><div class="meta">Failed · Travel laptop</div><div class="preview">Deployment stopped after the asset upload failed.</div></div><span class="time">1h</span></div>
+          </div>
+          <div class="footer"><span>● 2 online</span><span>3 Devices</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>function reportHeight(){window.parent.postMessage({type:"ui-review:height",height:document.documentElement.scrollHeight},"*")}new ResizeObserver(reportHeight).observe(document.documentElement);window.addEventListener("load",reportHeight);</script>
+</body>
+</html>

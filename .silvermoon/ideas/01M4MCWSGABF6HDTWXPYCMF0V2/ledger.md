@@ -20,11 +20,11 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 分阶段迁移设备身份
+- [x] **D-S01:** 分阶段迁移设备身份
 - [ ] **D-S02:** 验证生产连接生命周期
 
 ### Deployment acceptance criteria
 
-- [ ] **D-AC01:** 既有设备无身份断裂
+- [x] **D-AC01:** 既有设备无身份断裂
 - [ ] **D-AC02:** 单连接策略在 Relay 生效
 - [ ] **D-AC03:** 新设备可从安全 profile 重启
