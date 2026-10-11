@@ -35,8 +35,6 @@ Windows 首次 profile 创建修复经重新验收后由 release commit
 - `https://relay.silvermoon.work/health` 返回
   `{"service":"silvermoon-relay","status":"ok"}`。
 - `https://silvermoon.work/` 返回 HTTP 200。
-- 客户端选择身份的旧连接路径返回 HTTP 409
-  `connector-identity-managed-by-relay`。
 
 ## Connector 发布边界
 
