@@ -62,7 +62,7 @@ export default {
     const connectorMatch = /^\/v1\/connectors\/([^/]+)\/connect$/u
       .exec(url.pathname);
     if (request.method === "GET" && connectorMatch) {
-      return jsonError(409, "connector-identity-managed-by-relay");
+      return connectConnector(request, env, context);
     }
 
     if (

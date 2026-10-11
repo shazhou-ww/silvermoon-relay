@@ -12,7 +12,6 @@ import {
   ChevronDown,
   CircleAlert,
   Copy,
-  KeyRound,
   Laptop,
   Link2,
   LoaderCircle,
@@ -901,6 +900,15 @@ function App() {
   const connectorById = useMemo(
     () => new Map(connectors.map((connector) => [connector.id, connector])),
     [connectors],
+  )
+  const activeTokenByDevice = useMemo(
+    () =>
+      new Map(
+        tokens
+          .filter((token) => !token.revokedAt)
+          .map((token) => [token.deviceId, token]),
+      ),
+    [tokens],
   )
   const visibleAgentSessions = useMemo(() => {
     const query = sessionQuery.trim().toLocaleLowerCase()
@@ -1825,10 +1833,9 @@ function App() {
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="settings-dialog">
           <DialogHeader className="settings-dialog-header">
-            <DialogTitle>Account and connections</DialogTitle>
+            <DialogTitle>Devices</DialogTitle>
             <DialogDescription>
-              Manage Devices, connection tokens, identities, and signed-in
-              browsers without leaving the current Session.
+              Add and manage devices that can connect to this account.
             </DialogDescription>
           </DialogHeader>
 
@@ -1836,56 +1843,11 @@ function App() {
             <Card className="settings-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Laptop aria-hidden="true" />
-                  Connected Devices
+                  <Plus aria-hidden="true" />
+                  Add device
                 </CardTitle>
                 <CardDescription>
-                  Each Agent Session belongs to exactly one of these Devices.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="settings-list">
-                {connectors.length === 0 && (
-                  <p className="settings-empty">
-                    No Device has connected to this account yet.
-                  </p>
-                )}
-                {connectors.map((connector) => (
-                  <div className="settings-list-row" key={connector.id}>
-                    <div className="settings-row-main">
-                      <span
-                        className="connector-status-dot"
-                        data-status={connector.status}
-                        aria-hidden="true"
-                      />
-                      <div>
-                        <strong>{connector.displayName}</strong>
-                        <span>
-                          {connector.agent
-                            ? `${connector.agent.name}${connector.agent.version ? ` ${connector.agent.version}` : ""}`
-                            : "Connector identity pending"}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="settings-row-meta">
-                      <Badge variant="outline">{connector.status}</Badge>
-                      <span>
-                        {connector.sessionCount}{" "}
-                        {connector.sessionCount === 1 ? "Session" : "Sessions"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="settings-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <KeyRound aria-hidden="true" />
-                  Connection tokens
-                </CardTitle>
-                <CardDescription>
-                  Create a token for a Device. The full value appears once.
+                  Name the device once. Relay keeps this name with its token.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-5">
@@ -1953,45 +1915,82 @@ function App() {
                     </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
 
-                <div className="settings-list">
-                  {tokens.filter((token) => !token.revokedAt).length === 0 && (
-                    <p className="settings-empty">
-                      No active connection tokens.
-                    </p>
-                  )}
-                  {tokens
-                    .filter((token) => !token.revokedAt)
-                    .map((token) => (
-                      <div className="settings-list-row" key={token.id}>
+            <Card className="settings-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Laptop aria-hidden="true" />
+                  Devices
+                </CardTitle>
+                <CardDescription>
+                  Each Agent Session and connection token belongs to one Device.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="settings-list">
+                {connectors.length === 0 && (
+                  <p className="settings-empty">
+                    No Device has been added to this account yet.
+                  </p>
+                )}
+                {connectors.map((connector) => {
+                  const token = activeTokenByDevice.get(connector.id)
+                  return (
+                    <div className="settings-list-row" key={connector.id}>
+                      <div className="settings-row-main">
+                        <span
+                          className="connector-status-dot"
+                          data-status={connector.status}
+                          aria-hidden="true"
+                        />
                         <div>
-                          <strong>{token.deviceName}</strong>
+                          <strong>{connector.displayName}</strong>
                           <span>
-                            {token.tokenHint} · Last used{" "}
-                            {formatTime(token.lastUsedAt)}
+                            {connector.agent
+                              ? `${connector.agent.name}${connector.agent.version ? ` ${connector.agent.version}` : ""}`
+                              : "Not connected yet"}
+                            {" · "}
+                            {connector.sessionCount}{" "}
+                            {connector.sessionCount === 1
+                              ? "Session"
+                              : "Sessions"}
+                          </span>
+                          <span>
+                            {token
+                              ? `${token.tokenHint} · Last used ${formatTime(token.lastUsedAt)}`
+                              : "No active connection token"}
                           </span>
                         </div>
-                        <div className="settings-row-actions">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void rotateConnectionToken(token.id)}
-                          >
-                            Rotate
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void revokeConnectionToken(token.id)}
-                          >
-                            Revoke
-                          </Button>
-                        </div>
                       </div>
-                    ))}
-                </div>
+                      <div className="settings-row-actions">
+                        <Badge variant="outline">{connector.status}</Badge>
+                        {token && (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                void rotateConnectionToken(token.id)}
+                            >
+                              Rotate token
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                void revokeConnectionToken(token.id)}
+                            >
+                              Revoke
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </CardContent>
             </Card>
 

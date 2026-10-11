@@ -16,7 +16,7 @@
 
 ### I-S04: 收敛 API、UI 与兼容边界
 
-API 以设备名称创建固定绑定的 token，并向 UI 返回设备元数据；UI 使用“添加设备”流程一次命名和复制配置。保留既有 connector/session 路由与环境变量覆盖以兼容已部署调用方，文档明确 profile 优先级和旧参数迁移方式；successor-token 无缝升级不在本次实现范围。
+API 以设备名称创建固定绑定的 token，并向 UI 返回设备元数据；UI 使用单一“Add device”卡片一次命名和复制配置，并在统一设备卡片中展示状态、session 与 token 操作。保留既有 connector/session 路由与环境变量覆盖以兼容已部署调用方；旧连接路径、header 及注册 payload 中的 connector ID/display name 继续接受但忽略，身份始终由 token 推导。文档明确 profile 优先级和旧参数迁移方式；successor-token 无缝升级不在本次实现范围。
 
 ## Acceptance criteria
 
@@ -34,4 +34,4 @@ UI、API 与 CLI 测试证明用户只在添加设备时命名一次；profile �
 
 ### I-AC04: 覆盖优先级与兼容迁移清晰
 
-测试和文档证明 token 使用 `SILVERMOON_CONNECTION_TOKEN`、显式 token 文件、profile 的顺序解析，Relay 地址和非敏感选项使用显式参数或环境变量优先于 profile；旧 `--id`、`--display-name` 与 `SILVERMOON_CONNECTOR_ID` 会给出明确迁移错误。
+测试和文档证明 token 使用 `SILVERMOON_CONNECTION_TOKEN`、显式 token 文件、profile 的顺序解析，Relay 地址和非敏感选项使用显式参数或环境变量优先于 profile；新 CLI 对旧 `--id`、`--display-name` 与 `SILVERMOON_CONNECTOR_ID` 给出明确迁移错误，而 Relay 继续接受旧 connector 的路径、header 与注册字段并忽略其身份值。

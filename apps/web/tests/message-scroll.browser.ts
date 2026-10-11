@@ -42,7 +42,18 @@ async function fixture(page: Page, initialEvents = 40) {
         identities: [],
         sessionId: "browser-session",
       }
-    } else if (["/api/tokens", "/api/sessions"].includes(url.pathname)) {
+    } else if (url.pathname === "/api/tokens") {
+      body = [{
+        id: "token-one",
+        deviceId: "one",
+        deviceName: "Device one",
+        tokenHint: "A1b2",
+        createdAt: "2026-10-10T00:00:00.000Z",
+        expiresAt: null,
+        lastUsedAt: null,
+        revokedAt: null,
+      }]
+    } else if (url.pathname === "/api/sessions") {
       body = []
     } else if (url.pathname === "/api/connectors") {
       body = [connector("one"), connector("two")]
@@ -84,6 +95,24 @@ async function fixture(page: Page, initialEvents = 40) {
 
 const scrollRegion = (page: Page) => page.getByRole("region", { name: "Session messages" })
 const jumpButton = (page: Page) => page.getByRole("button", { name: "Jump to latest" })
+
+test("device settings use one add flow and unified device cards", async ({ page }) => {
+  await fixture(page)
+  await page.getByRole("button", { name: "Account menu for Reviewer" })
+    .click()
+  await page.getByRole("menuitem", { name: "Account and connections" })
+    .click()
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.getByRole("heading", { name: "Devices", exact: true }))
+    .toBeVisible()
+  await expect(dialog.getByText("Add device", { exact: true }).first())
+    .toBeVisible()
+  await expect(dialog.getByText("Connection tokens", { exact: true }))
+    .toHaveCount(0)
+  await expect(dialog.getByText("Device one", { exact: true })).toBeVisible()
+  await expect(dialog.getByText(/A1b2 · Last used Never/)).toBeVisible()
+  await expect(dialog.getByRole("button", { name: "Rotate token" })).toBeVisible()
+})
 
 async function bottomDistance(page: Page) {
   return scrollRegion(page).evaluate((element) =>

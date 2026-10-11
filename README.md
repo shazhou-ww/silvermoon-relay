@@ -117,7 +117,9 @@ profile values. Use `--write-config` with an environment token or token file
 to atomically write the profile. It is mode `0600` on POSIX and grants access
 only to the current user on Windows; unsafe profile permissions are rejected.
 Legacy `--id`, `--display-name`, and `SILVERMOON_CONNECTOR_ID` settings must be
-removed.
+removed when upgrading the CLI. Relay remains compatible with already deployed
+connectors: it accepts their ID and display-name path, header, and registration
+fields but ignores those values in favor of the token-bound Device identity.
 
 Run `silvermoon-connector --help` for all environment variables and options.
 `--approve-all` allows remotely initiated sessions to approve every Copilot
