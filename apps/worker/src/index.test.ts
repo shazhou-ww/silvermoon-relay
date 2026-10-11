@@ -114,6 +114,7 @@ async function createSchema(): Promise<void> {
       id TEXT NOT NULL,
       title TEXT,
       status TEXT NOT NULL,
+      native_status TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       last_activity_at TEXT NOT NULL,

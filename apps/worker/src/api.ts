@@ -339,7 +339,7 @@ export async function handleApi(
 
     if (request.method === "GET") {
       const sessions = await env.DB.prepare(
-        `SELECT id, title, status, created_at, updated_at, last_activity_at,
+        `SELECT id, title, status, native_status, created_at, updated_at, last_activity_at,
           last_message_preview, parent_session_id, can_send_message
          FROM agent_sessions
          WHERE user_id = ?1 AND connector_id = ?2
@@ -351,6 +351,7 @@ export async function handleApi(
           id: string;
           title: string | null;
           status: string;
+          native_status: string | null;
           created_at: string;
           updated_at: string;
           last_activity_at: string;
@@ -363,6 +364,7 @@ export async function handleApi(
         connectorId: connector.id,
         title: item.title,
         status: item.status,
+        nativeStatus: item.native_status,
         createdAt: item.created_at,
         updatedAt: item.updated_at,
         lastActivityAt: item.last_activity_at,
