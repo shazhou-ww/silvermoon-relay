@@ -52,13 +52,11 @@ h1 { margin:0; font-size:20px; line-height:1.3; }
 .row.parent-tree:hover .tree-control .dot,
 .row.parent-tree:focus-within .tree-control .dot,
 .row.parent-tree-collapsed:hover .tree-control .dot,
-.row.parent-tree-collapsed:focus-within .tree-control .dot,
-.row.parent-tree.is-hovered .tree-control .dot { opacity:0; }
+.row.parent-tree-collapsed:focus-within .tree-control .dot { opacity:0; }
 .row.parent-tree:hover .tree-toggle,
 .row.parent-tree:focus-within .tree-toggle,
 .row.parent-tree-collapsed:hover .tree-toggle,
-.row.parent-tree-collapsed:focus-within .tree-toggle,
-.row.parent-tree.is-hovered .tree-toggle { opacity:1; pointer-events:auto; }
+.row.parent-tree-collapsed:focus-within .tree-toggle { opacity:1; pointer-events:auto; }
 .title { overflow:hidden; font-size:13px; font-weight:750; text-overflow:ellipsis; white-space:nowrap; }
 .count { flex:0 0 auto; color:var(--muted); font-size:10px; }
 .meta { display:flex; min-width:0; gap:6px; margin-top:3px; color:var(--muted); font-size:10px; }
