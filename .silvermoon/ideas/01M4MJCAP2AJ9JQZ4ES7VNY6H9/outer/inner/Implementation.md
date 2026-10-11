@@ -27,3 +27,5 @@
 ### I-AC03: 列表体验跨视口可用
 
 浏览器验证证明桌面窄侧栏与移动端均无横向溢出，树形控制可通过键盘操作，选择 Session、返回列表和 URL 历史行为保持正常。
+
+实施结果与验证记录见 [Implementation-Evidence.md](./Implementation-Evidence.md)。

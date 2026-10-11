@@ -10,13 +10,14 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
+  ChevronRight,
   CircleAlert,
   Copy,
-  KeyRound,
   Laptop,
   Link2,
   LoaderCircle,
   LogOut,
+  MoreHorizontal,
   Plus,
   Search,
   Send,
@@ -49,6 +50,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -66,7 +68,14 @@ import {
   type TranscriptPart,
   type TranscriptTurn,
 } from "@/message-flow"
-import { orderSessionHierarchy } from "@/session-list"
+import {
+  countSessionStatuses,
+  deriveVisibleSessions,
+  groupSessionsByDevice,
+  sessionKey,
+  type OrderedSession,
+  type SessionStatusView,
+} from "@/session-list"
 
 const relayOrigin =
   import.meta.env.VITE_RELAY_ORIGIN ?? "https://relay.silvermoon.work"
@@ -137,6 +146,7 @@ interface AgentSession {
   parentSessionId: string | null
   title: string | null
   status: string
+  nativeStatus?: string | null
   createdAt: string
   updatedAt: string
   lastActivityAt: string
@@ -181,7 +191,6 @@ const providerLabels: Record<Provider, string> = {
   github: "GitHub",
 }
 
-const attentionStatuses = new Set(["waiting", "failed", "gone", "unknown"])
 const emptyEvents: AgentSessionEvent[] = []
 
 function csrfToken(): string {
@@ -240,6 +249,26 @@ function formatRelativeTime(value: string): string {
 
 function sessionLabel(session: AgentSession): string {
   return session.title || session.lastMessagePreview || "Untitled session"
+}
+
+function sessionStatusLabel(status: string): string {
+  switch (status) {
+    case "queued":
+    case "running":
+      return "Active"
+    case "waiting":
+      return "Needs input"
+    case "idle":
+      return "Available"
+    case "failed":
+      return "Failed"
+    case "closed":
+      return "Ended"
+    case "gone":
+      return "Unavailable"
+    default:
+      return "Unknown"
+  }
 }
 
 function eventLabel(event: AgentSessionEvent): string {
@@ -559,7 +588,15 @@ function App() {
     string | null
   >(null)
   const [sessionQuery, setSessionQuery] = useState("")
-  const [attentionOnly, setAttentionOnly] = useState(false)
+  const [sessionStatusView, setSessionStatusView] =
+    useState<SessionStatusView>("all")
+  const [showEndedSessions, setShowEndedSessions] = useState(false)
+  const [showUnavailableSessions, setShowUnavailableSessions] = useState(false)
+  const [deviceGroupingEnabled, setDeviceGroupingEnabled] = useState(false)
+  const [collapsedSessionKeys, setCollapsedSessionKeys] =
+    useState<Set<string>>(() => new Set())
+  const [expandedDeviceIds, setExpandedDeviceIds] =
+    useState<Set<string>>(() => new Set())
   const [showToolEvents, setShowToolEvents] = useState(false)
   const [mobileView, setMobileView] = useState<"list" | "session">(
     () => selectionFromLocation() ? "session" : "list",
@@ -902,25 +939,75 @@ function App() {
     () => new Map(connectors.map((connector) => [connector.id, connector])),
     [connectors],
   )
-  const visibleAgentSessions = useMemo(() => {
-    const query = sessionQuery.trim().toLocaleLowerCase()
-    const filteredSessions = agentSessions.filter((session) => {
-      if (attentionOnly && !attentionStatuses.has(session.status)) return false
-      if (!query) return true
-      const connectorName =
-        connectorById.get(session.connectorId)?.displayName ?? ""
-      return [
-        sessionLabel(session),
-        session.lastMessagePreview ?? "",
-        connectorName,
-      ].some((value) => value.toLocaleLowerCase().includes(query))
+  const activeTokenByDevice = useMemo(
+    () =>
+      new Map(
+        tokens
+          .filter((token) => !token.revokedAt)
+          .map((token) => [token.deviceId, token]),
+      ),
+    [tokens],
+  )
+  const sessionStatusCounts = useMemo(
+    () => countSessionStatuses(agentSessions),
+    [agentSessions],
+  )
+  const visibleAgentSessions = useMemo(
+    () =>
+      deriveVisibleSessions(agentSessions, connectorById, {
+        query: sessionQuery,
+        statusView: sessionStatusView,
+        showEnded: showEndedSessions,
+        showUnavailable: showUnavailableSessions,
+        collapsedSessionKeys,
+      }),
+    [
+      agentSessions,
+      collapsedSessionKeys,
+      connectorById,
+      sessionQuery,
+      sessionStatusView,
+      showEndedSessions,
+      showUnavailableSessions,
+    ],
+  )
+  const sessionDeviceGroups = useMemo(
+    () => groupSessionsByDevice(visibleAgentSessions, connectorById),
+    [connectorById, visibleAgentSessions],
+  )
+  const visibleSessionCount = visibleAgentSessions.filter(
+    (item) => !item.isContext,
+  ).length
+  const hasCustomSessionView =
+    showEndedSessions || showUnavailableSessions || deviceGroupingEnabled
+  const toggleSessionCollapsed = useCallback((session: AgentSession) => {
+    const key = sessionKey(session)
+    setCollapsedSessionKeys((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
     })
-    return orderSessionHierarchy(filteredSessions)
+  }, [])
+  const toggleDeviceExpanded = useCallback((connectorId: string) => {
+    setExpandedDeviceIds((current) => {
+      const next = new Set(current)
+      if (next.has(connectorId)) next.delete(connectorId)
+      else next.add(connectorId)
+      return next
+    })
+  }, [])
+  const enableDeviceGrouping = useCallback((enabled: boolean) => {
+    setDeviceGroupingEnabled(enabled)
+    if (!enabled) return
+    setExpandedDeviceIds((current) => {
+      if (current.size > 0) return current
+      const preferred = selectedConnectorId ?? sessionDeviceGroups[0]?.source.id
+      return preferred ? new Set([preferred]) : current
+    })
   }, [
-    agentSessions,
-    attentionOnly,
-    connectorById,
-    sessionQuery,
+    selectedConnectorId,
+    sessionDeviceGroups,
   ])
   const onlineCreateConnectors = useMemo(
     () =>
@@ -1270,6 +1357,102 @@ function App() {
     (connector) => connector.status === "online",
   ).length
 
+  const renderSessionRow = (
+    item: OrderedSession<AgentSession>,
+    groupedByDevice: boolean,
+  ) => {
+    const { session } = item
+    const connector = connectorById.get(session.connectorId)
+    const isSelected =
+      session.connectorId === selectedConnectorId
+      && session.id === selectedSessionId
+    const isCollapsed = collapsedSessionKeys.has(sessionKey(session))
+    return (
+      <div
+        key={`${session.connectorId}:${session.id}`}
+        className={`session-list-item${isSelected ? " is-selected" : ""}${item.isSubsession ? " is-subsession" : ""}${item.hasChildren ? " has-children" : ""}${item.isLastChild ? " is-last-child" : ""}${item.isContext ? " is-context" : ""}`}
+      >
+        <span className="session-tree-control">
+          <span
+            className="session-state-dot"
+            data-status={session.status}
+            aria-hidden="true"
+          />
+          {item.hasChildren && (
+            <button
+              type="button"
+              className="session-tree-toggle"
+              onClick={() => toggleSessionCollapsed(session)}
+              aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${
+                sessionLabel(session)
+              }`}
+              aria-expanded={!isCollapsed}
+            >
+              {isCollapsed
+                ? <ChevronRight aria-hidden="true" />
+                : <ChevronDown aria-hidden="true" />}
+            </button>
+          )}
+        </span>
+        <button
+          type="button"
+          className="session-item-select"
+          onClick={() => selectAgentSession(session)}
+          aria-current={isSelected ? "page" : undefined}
+        >
+          <span className="session-item-main">
+            <span className="session-item-title-line">
+              <span className="session-item-title">
+                {sessionLabel(session)}
+              </span>
+              {item.hasChildren && (
+                <span className="session-child-count" aria-label="Has children">
+                  {
+                    visibleAgentSessions.filter((candidate) =>
+                      candidate.session.connectorId === session.connectorId
+                      && candidate.session.parentSessionId === session.id
+                    ).length
+                  }
+                </span>
+              )}
+              {item.isContext && (
+                <span className="session-context-label">Context</span>
+              )}
+            </span>
+            <span
+              className="session-item-meta"
+              title={session.nativeStatus
+                ? `Agent status: ${session.nativeStatus}`
+                : undefined}
+            >
+              <span className="session-item-status">
+                {sessionStatusLabel(session.status)}
+              </span>
+              {!groupedByDevice && (
+                <span className="device-tag">
+                  <Laptop aria-hidden="true" />
+                  {connector?.displayName ?? "Unknown device"}
+                </span>
+              )}
+            </span>
+            {session.lastMessagePreview && !item.isContext && (
+              <span className="session-item-preview">
+                {session.lastMessagePreview}
+              </span>
+            )}
+          </span>
+          <time
+            className="session-item-time"
+            dateTime={session.lastActivityAt}
+            title={formatTime(session.lastActivityAt)}
+          >
+            {formatRelativeTime(session.lastActivityAt)}
+          </time>
+        </button>
+      </div>
+    )
+  }
+
   return (
     <>
       <main className={`relay-app mobile-view-${mobileView}`}>
@@ -1308,7 +1491,10 @@ function App() {
                           ?? "Unknown device"}
                       </span>
                     </div>
-                    <SessionStatus status={selectedAgentSession.status} />
+                    <SessionStatus
+                      status={selectedAgentSession.status}
+                      nativeStatus={selectedAgentSession.nativeStatus}
+                    />
                   </>
                 )
               : (
@@ -1365,9 +1551,9 @@ function App() {
             <div>
               <h2>Sessions</h2>
               <p>
-                {agentSessions.length === 1
-                  ? "1 active thread"
-                  : `${agentSessions.length} active threads`}
+                {visibleSessionCount === 1
+                  ? "1 current session"
+                  : `${visibleSessionCount} current sessions`}
               </p>
             </div>
             <Button
@@ -1392,25 +1578,88 @@ function App() {
               <Input
                 value={sessionQuery}
                 onChange={(event) => setSessionQuery(event.target.value)}
-                placeholder="Find a Session or Device"
-                aria-label="Find a Session or Device"
+                placeholder="Search Sessions, Agents, Devices"
+                aria-label="Search Sessions, Agents, and Devices"
               />
             </label>
             <div className="session-filters" aria-label="Session filters">
               <button
                 type="button"
-                aria-pressed={!attentionOnly}
-                onClick={() => setAttentionOnly(false)}
+                aria-pressed={sessionStatusView === "all"}
+                onClick={() => setSessionStatusView("all")}
               >
                 All
               </button>
-              <button
-                type="button"
-                aria-pressed={attentionOnly}
-                onClick={() => setAttentionOnly(true)}
-              >
-                Needs attention
-              </button>
+              {sessionStatusCounts.active > 0 && (
+                <button
+                  type="button"
+                  aria-pressed={sessionStatusView === "active"}
+                  onClick={() => setSessionStatusView("active")}
+                >
+                  Active {sessionStatusCounts.active}
+                </button>
+              )}
+              {sessionStatusCounts.waiting > 0 && (
+                <button
+                  type="button"
+                  className="is-waiting"
+                  aria-pressed={sessionStatusView === "waiting"}
+                  onClick={() => setSessionStatusView("waiting")}
+                >
+                  Needs input {sessionStatusCounts.waiting}
+                </button>
+              )}
+              {sessionStatusCounts.failed > 0 && (
+                <button
+                  type="button"
+                  className="is-failed"
+                  aria-pressed={sessionStatusView === "failed"}
+                  onClick={() => setSessionStatusView("failed")}
+                >
+                  Failed {sessionStatusCounts.failed}
+                </button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="session-view-trigger"
+                    data-active={hasCustomSessionView || undefined}
+                    aria-label="Session view options"
+                  >
+                    <MoreHorizontal aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="session-view-menu"
+                >
+                  <DropdownMenuCheckboxItem
+                    checked={showEndedSessions}
+                    onCheckedChange={(checked) =>
+                      setShowEndedSessions(checked === true)}
+                  >
+                    Show ended
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={showUnavailableSessions}
+                    onCheckedChange={(checked) =>
+                      setShowUnavailableSessions(checked === true)}
+                  >
+                    Show unavailable
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={deviceGroupingEnabled}
+                    onCheckedChange={(checked) =>
+                      enableDeviceGrouping(checked === true)}
+                  >
+                    Group by Device
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -1449,7 +1698,7 @@ function App() {
                   variant="outline"
                   onClick={() => {
                     setSessionQuery("")
-                    setAttentionOnly(false)
+                    setSessionStatusView("all")
                   }}
                 >
                   Clear filters
@@ -1457,53 +1706,59 @@ function App() {
               </div>
             )}
 
-            {visibleAgentSessions.map(({ session, isSubsession }) => {
-              const connector = connectorById.get(session.connectorId)
-              const isSelected =
-                session.connectorId === selectedConnectorId
-                && session.id === selectedSessionId
-              return (
-                <button
-                  type="button"
-                  key={`${session.connectorId}:${session.id}`}
-                  className={`session-list-item${isSelected ? " is-selected" : ""}${isSubsession ? " is-subsession" : ""}`}
-                  onClick={() => selectAgentSession(session)}
-                  aria-current={isSelected ? "page" : undefined}
-                >
-                  <span
-                    className="session-state-dot"
-                    data-status={session.status}
-                    aria-hidden="true"
-                  />
-                  <span className="session-item-main">
-                    <span className="session-item-title">
-                      {sessionLabel(session)}
-                    </span>
-                    <span className="session-item-meta">
-                      <span className="device-tag">
-                        <Laptop aria-hidden="true" />
-                        {connector?.displayName ?? "Unknown device"}
-                      </span>
-                      <span className="session-item-status">
-                        {session.status}
-                      </span>
-                    </span>
-                    {session.lastMessagePreview && (
-                      <span className="session-item-preview">
-                        {session.lastMessagePreview}
-                      </span>
-                    )}
-                  </span>
-                  <time
-                    className="session-item-time"
-                    dateTime={session.lastActivityAt}
-                    title={formatTime(session.lastActivityAt)}
-                  >
-                    {formatRelativeTime(session.lastActivityAt)}
-                  </time>
-                </button>
-              )
-            })}
+            {deviceGroupingEnabled
+              ? sessionDeviceGroups.map((group, groupIndex) => {
+                  const expanded = expandedDeviceIds.has(group.source.id)
+                    || (
+                      expandedDeviceIds.size === 0
+                      && groupIndex === 0
+                    )
+                  const groupCounts = countSessionStatuses(
+                    group.sessions.map((item) => item.session),
+                  )
+                  return (
+                    <section
+                      className="session-device-group"
+                      key={group.source.id}
+                      aria-labelledby={`device-${group.source.id}`}
+                    >
+                      <button
+                        type="button"
+                        className="session-device-heading"
+                        onClick={() => toggleDeviceExpanded(group.source.id)}
+                        aria-expanded={expanded}
+                      >
+                        {expanded
+                          ? <ChevronDown aria-hidden="true" />
+                          : <ChevronRight aria-hidden="true" />}
+                        <strong id={`device-${group.source.id}`}>
+                          {group.source.displayName}
+                        </strong>
+                        <span>{group.sessions.length}</span>
+                        <span className="session-device-alerts">
+                          {groupCounts.waiting > 0
+                            && `${groupCounts.waiting} input`}
+                          {groupCounts.waiting > 0 && groupCounts.failed > 0
+                            && " · "}
+                          {groupCounts.failed > 0
+                            && `${groupCounts.failed} failed`}
+                        </span>
+                        <span
+                          className="session-device-status"
+                          data-status={group.source.status}
+                        >
+                          {group.source.status}
+                        </span>
+                      </button>
+                      {expanded && group.sessions.map((item) =>
+                        renderSessionRow(item, true)
+                      )}
+                    </section>
+                  )
+                })
+              : visibleAgentSessions.map((item) =>
+                  renderSessionRow(item, false)
+                )}
           </div>
 
           <div className="session-rail-footer">
@@ -1539,7 +1794,10 @@ function App() {
                         {selectedConnector?.displayName ?? "Unknown device"}
                       </span>
                     </div>
-                    <SessionStatus status={selectedAgentSession.status} />
+                    <SessionStatus
+                      status={selectedAgentSession.status}
+                      nativeStatus={selectedAgentSession.nativeStatus}
+                    />
                   </div>
 
                   <TranscriptScroll key={selectionKey}>
@@ -1825,10 +2083,9 @@ function App() {
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="settings-dialog">
           <DialogHeader className="settings-dialog-header">
-            <DialogTitle>Account and connections</DialogTitle>
+            <DialogTitle>Devices</DialogTitle>
             <DialogDescription>
-              Manage Devices, connection tokens, identities, and signed-in
-              browsers without leaving the current Session.
+              Add and manage devices that can connect to this account.
             </DialogDescription>
           </DialogHeader>
 
@@ -1836,56 +2093,11 @@ function App() {
             <Card className="settings-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Laptop aria-hidden="true" />
-                  Connected Devices
+                  <Plus aria-hidden="true" />
+                  Add device
                 </CardTitle>
                 <CardDescription>
-                  Each Agent Session belongs to exactly one of these Devices.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="settings-list">
-                {connectors.length === 0 && (
-                  <p className="settings-empty">
-                    No Device has connected to this account yet.
-                  </p>
-                )}
-                {connectors.map((connector) => (
-                  <div className="settings-list-row" key={connector.id}>
-                    <div className="settings-row-main">
-                      <span
-                        className="connector-status-dot"
-                        data-status={connector.status}
-                        aria-hidden="true"
-                      />
-                      <div>
-                        <strong>{connector.displayName}</strong>
-                        <span>
-                          {connector.agent
-                            ? `${connector.agent.name}${connector.agent.version ? ` ${connector.agent.version}` : ""}`
-                            : "Connector identity pending"}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="settings-row-meta">
-                      <Badge variant="outline">{connector.status}</Badge>
-                      <span>
-                        {connector.sessionCount}{" "}
-                        {connector.sessionCount === 1 ? "Session" : "Sessions"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="settings-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <KeyRound aria-hidden="true" />
-                  Connection tokens
-                </CardTitle>
-                <CardDescription>
-                  Create a token for a Device. The full value appears once.
+                  Name the device once. Relay keeps this name with its token.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-5">
@@ -1953,45 +2165,82 @@ function App() {
                     </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
 
-                <div className="settings-list">
-                  {tokens.filter((token) => !token.revokedAt).length === 0 && (
-                    <p className="settings-empty">
-                      No active connection tokens.
-                    </p>
-                  )}
-                  {tokens
-                    .filter((token) => !token.revokedAt)
-                    .map((token) => (
-                      <div className="settings-list-row" key={token.id}>
+            <Card className="settings-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Laptop aria-hidden="true" />
+                  Devices
+                </CardTitle>
+                <CardDescription>
+                  Each Agent Session and connection token belongs to one Device.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="settings-list">
+                {connectors.length === 0 && (
+                  <p className="settings-empty">
+                    No Device has been added to this account yet.
+                  </p>
+                )}
+                {connectors.map((connector) => {
+                  const token = activeTokenByDevice.get(connector.id)
+                  return (
+                    <div className="settings-list-row" key={connector.id}>
+                      <div className="settings-row-main">
+                        <span
+                          className="connector-status-dot"
+                          data-status={connector.status}
+                          aria-hidden="true"
+                        />
                         <div>
-                          <strong>{token.deviceName}</strong>
+                          <strong>{connector.displayName}</strong>
                           <span>
-                            {token.tokenHint} · Last used{" "}
-                            {formatTime(token.lastUsedAt)}
+                            {connector.agent
+                              ? `${connector.agent.name}${connector.agent.version ? ` ${connector.agent.version}` : ""}`
+                              : "Not connected yet"}
+                            {" · "}
+                            {connector.sessionCount}{" "}
+                            {connector.sessionCount === 1
+                              ? "Session"
+                              : "Sessions"}
+                          </span>
+                          <span>
+                            {token
+                              ? `${token.tokenHint} · Last used ${formatTime(token.lastUsedAt)}`
+                              : "No active connection token"}
                           </span>
                         </div>
-                        <div className="settings-row-actions">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void rotateConnectionToken(token.id)}
-                          >
-                            Rotate
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void revokeConnectionToken(token.id)}
-                          >
-                            Revoke
-                          </Button>
-                        </div>
                       </div>
-                    ))}
-                </div>
+                      <div className="settings-row-actions">
+                        <Badge variant="outline">{connector.status}</Badge>
+                        {token && (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                void rotateConnectionToken(token.id)}
+                            >
+                              Rotate token
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                void revokeConnectionToken(token.id)}
+                            >
+                              Revoke
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </CardContent>
             </Card>
 
@@ -2109,11 +2358,21 @@ function RelayMark({ compact = false }: { compact?: boolean }) {
   )
 }
 
-function SessionStatus({ status }: { status: string }) {
+function SessionStatus({
+  status,
+  nativeStatus,
+}: {
+  status: string
+  nativeStatus?: string | null
+}) {
   return (
-    <span className="session-status" data-status={status}>
+    <span
+      className="session-status"
+      data-status={status}
+      title={nativeStatus ? `Agent status: ${nativeStatus}` : undefined}
+    >
       <span aria-hidden="true" />
-      {status}
+      {sessionStatusLabel(status)}
     </span>
   )
 }

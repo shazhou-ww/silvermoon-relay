@@ -114,6 +114,7 @@ async function createSchema(): Promise<void> {
       id TEXT NOT NULL,
       title TEXT,
       status TEXT NOT NULL,
+      native_status TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       last_activity_at TEXT NOT NULL,
@@ -325,7 +326,7 @@ describe("relay identity and token service", () => {
       deviceName: "Test device",
     });
 
-    const clientIdentity = await SELF.fetch(
+    const legacyUpgrade = await SELF.fetch(
       "https://relay.silvermoon.work/v1/connectors/client-selected/connect",
       {
         headers: {
@@ -337,10 +338,45 @@ describe("relay identity and token service", () => {
         },
       },
     );
-    expect(clientIdentity.status).toBe(409);
-    expect(await clientIdentity.json()).toEqual({
-      error: "connector-identity-managed-by-relay",
+    expect(legacyUpgrade.status).toBe(101);
+    const legacySocket = legacyUpgrade.webSocket!;
+    legacySocket.accept();
+    const legacyFrames: Array<{
+      id?: number;
+      result?: { type?: string; data?: { connectorId?: string } };
+    }> = [];
+    legacySocket.addEventListener("message", (event) => {
+      legacyFrames.push(JSON.parse(String(event.data)));
     });
+    legacySocket.send(JSON.stringify({
+      id: 1,
+      method: "mutation",
+      params: {
+        path: "register",
+        input: {
+          connectorId: "client-selected",
+          displayName: "Client selected name",
+          agent: { name: "Legacy connector" },
+          capabilities: {
+            listSessions: false,
+            createSession: false,
+            sendMessage: false,
+            streamEvents: false,
+          },
+        },
+      },
+    }));
+    await expect.poll(() =>
+      legacyFrames.find((frame) => frame.id === 1)?.result?.data?.connectorId
+    ).toBe(body.metadata.deviceId);
+    expect(
+      await env.DB.prepare(
+        `SELECT display_name FROM connectors
+         WHERE user_id = 'user-01' AND id = ?1`,
+      ).bind(body.metadata.deviceId).first<string>("display_name"),
+    ).toBe("Test device");
+    legacySocket.close(1000, "legacy compatibility verified");
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const listed = await SELF.fetch(
       "https://relay.silvermoon.work/api/tokens",

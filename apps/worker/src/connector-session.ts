@@ -274,13 +274,14 @@ export class ConnectorSession extends DurableObject<Env> {
   ): Promise<void> {
     await this.env.DB.prepare(
       `INSERT INTO agent_sessions
-        (user_id, connector_id, id, title, status, created_at, updated_at,
+        (user_id, connector_id, id, title, status, native_status, created_at, updated_at,
          last_activity_at, last_message_preview, parent_session_id,
          can_send_message)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?9, ?10)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11)
        ON CONFLICT (user_id, connector_id, id) DO UPDATE SET
          title = excluded.title,
          status = excluded.status,
+         native_status = excluded.native_status,
          updated_at = excluded.updated_at,
          last_activity_at = excluded.last_activity_at,
          parent_session_id = excluded.parent_session_id,
@@ -296,6 +297,7 @@ export class ConnectorSession extends DurableObject<Env> {
         session.id,
         session.title,
         session.status,
+        session.nativeStatus ?? null,
         session.createdAt,
         session.updatedAt,
         session.lastMessagePreview,
@@ -312,9 +314,9 @@ export class ConnectorSession extends DurableObject<Env> {
     await this.env.DB.batch([
       this.env.DB.prepare(
         `INSERT INTO agent_sessions
-          (user_id, connector_id, id, title, status, created_at, updated_at,
+          (user_id, connector_id, id, title, status, native_status, created_at, updated_at,
            last_activity_at, last_message_preview)
-         VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?5, ?5, ?6)
+         VALUES (?1, ?2, ?3, NULL, ?4, NULL, ?5, ?5, ?5, ?6)
          ON CONFLICT (user_id, connector_id, id) DO UPDATE SET
            status = COALESCE(?7, agent_sessions.status),
            updated_at = ?5,

@@ -42,6 +42,7 @@ export const agentSessionSchema = z.object({
   parentSessionId: sessionIdSchema.nullable().optional(),
   title: z.string().trim().min(1).max(256).nullable(),
   status: sessionStatusSchema,
+  nativeStatus: z.string().trim().min(1).max(128).nullable().optional(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
   lastMessagePreview: z.string().max(512).nullable().default(null),
