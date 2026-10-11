@@ -52,7 +52,7 @@
       <ul class="deltas" aria-label="关键变化">
         <li>只命名一次</li>
         <li>token 归属于设备</li>
-        <li>connector 不再自报 ID</li>
+        <li>一次安全配置后直接启动</li>
       </ul>
     </section>
     <div class="frame-shell">
@@ -63,7 +63,7 @@
       <strong>是否批准统一的“添加设备”入口与设备卡片归属？</strong>
     </section>
   </main>
-  <footer>升级期 successor token 不在本轮 UI 范围内；重叠连接错误可在实施阶段沿用现有通知模式。</footer>
+  <footer>升级期 successor token 不在本轮 UI 范围内；普通 profile 不保存明文 token，headless 环境可显式选择权限受限的 token 文件。</footer>
   <script>
     const frame = document.querySelector("#scenario-frame");
     window.addEventListener("message", (event) => {
