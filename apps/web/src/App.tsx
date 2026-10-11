@@ -166,7 +166,7 @@ interface CommandResponse {
 interface HistorySyncResponse {
   command: {
     id: string
-    type: "session.history"
+    type: string
     status: "queued" | "sent" | "accepted" | "failed"
   } | null
   synced?: boolean
@@ -895,7 +895,7 @@ function App() {
           `/api/connectors/${connectorId}/sessions/${sessionId}/events/sync`,
           { method: "POST" },
         )
-        if (active && result.command) {
+        if (active && result.command?.type === "session.history") {
           setTrackedCommand({
             id: result.command.id,
             label: "History sync",
