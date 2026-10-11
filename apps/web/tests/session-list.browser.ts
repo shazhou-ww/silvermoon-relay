@@ -190,6 +190,16 @@ test("view options reveal hidden states and focus device groups", async ({ page 
     .toHaveAttribute("aria-expanded", "false")
   await expect(page.getByText("Investigate browser tests", { exact: true }))
     .toHaveCount(0)
+  await page.getByRole("button", { name: /Studio laptop/ }).click()
+  await expect(page.getByRole("button", { name: /Studio laptop/ }))
+    .toHaveAttribute("aria-expanded", "false")
+  await expect(
+    page.locator(".session-list").getByText(
+      "Release desktop client",
+      { exact: true },
+    ),
+  ).toHaveCount(0)
+  await page.getByRole("button", { name: /Studio laptop/ }).click()
   await page.getByRole("button", { name: /Work desktop/ }).click()
   await expect(page.getByText("Investigate browser tests", { exact: true }))
     .toBeVisible()

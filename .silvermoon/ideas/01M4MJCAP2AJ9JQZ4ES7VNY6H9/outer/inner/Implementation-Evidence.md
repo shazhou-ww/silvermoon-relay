@@ -6,11 +6,12 @@
 - Session 列表默认隐藏 ended 与 unavailable，提供按需状态 badge、搜索、视图菜单、父级上下文、Session 折叠和按设备 disclosure 分组。
 - 父 Session 默认显示状态点，hover 或键盘聚焦时原位切换为 chevron；树线避让文字，列表不使用行分割线。
 - 启用设备分组时默认展开当前设备，其他设备保持收起且可独立多开；设备状态通过 `online` / `offline` 文字颜色表达。
+- 生产冒烟发现并修复最后一个设备组无法保持收起的问题；展开集合为空时不再隐式重开第一组。
 
 ## 验证
 
 - Web 单元测试：11 通过。
-- Web Playwright：32 通过，1 个预期跳过，覆盖 desktop、mobile 与 320px narrow。
+- Web Playwright：35 通过，1 个预期跳过，覆盖 desktop、mobile 与 320px narrow；包含设备组收起后列表内容消失、重新展开及多设备同时展开的回归断言。
 - Protocol：5 个测试及类型检查通过。
 - Connector：21 通过、1 个预期跳过，类型检查通过。
 - Worker：19 个测试及类型检查通过。

@@ -1707,12 +1707,8 @@ function App() {
             )}
 
             {deviceGroupingEnabled
-              ? sessionDeviceGroups.map((group, groupIndex) => {
+              ? sessionDeviceGroups.map((group) => {
                   const expanded = expandedDeviceIds.has(group.source.id)
-                    || (
-                      expandedDeviceIds.size === 0
-                      && groupIndex === 0
-                    )
                   const groupCounts = countSessionStatuses(
                     group.sessions.map((item) => item.session),
                   )
