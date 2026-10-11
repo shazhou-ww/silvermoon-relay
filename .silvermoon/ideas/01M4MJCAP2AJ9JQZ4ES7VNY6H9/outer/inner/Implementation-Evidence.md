@@ -11,7 +11,7 @@
 ## 验证
 
 - Web 单元测试：11 通过。
-- Web Playwright：35 通过，1 个预期跳过，覆盖 desktop、mobile 与 320px narrow；包含设备组收起后列表内容消失、重新展开及多设备同时展开的回归断言。
+- Web Playwright：38 通过，1 个预期跳过，覆盖 desktop、mobile 与 320px narrow；包含设备组收起后列表内容消失、重新展开及多设备同时展开的回归断言。
 - Protocol：5 个测试及类型检查通过。
 - Connector：21 通过、1 个预期跳过，类型检查通过。
 - Worker：19 个测试及类型检查通过。
