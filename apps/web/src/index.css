@@ -805,6 +805,9 @@ textarea:focus-visible {
 }
 
 .session-device-heading {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: grid;
   width: 100%;
   min-height: 2.15rem;
@@ -813,7 +816,9 @@ textarea:focus-visible {
   align-items: center;
   padding: 0.45rem 0.75rem 0.3rem;
   color: var(--muted-foreground);
-  background: transparent;
+  background: color-mix(in srgb, var(--relay-panel) 96%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 72%, transparent);
+  backdrop-filter: blur(0.4rem);
   border: 0;
   text-align: left;
 }
