@@ -12,7 +12,7 @@
 
 ### I-S03: 收敛添加设备与本地配置体验
 
-将 token 创建与 connector 配置统一为“添加设备”流程，提供用户级 profile。普通配置仅保存 Relay 地址、非敏感选项与凭据引用；token 默认进入系统凭据库，headless 环境可显式使用权限受限的 token 文件。移除新配置中的自定义 connector ID 和显示名，并为既有安装提供明确迁移路径。
+将 token 创建与 connector 配置统一为“添加设备”流程，并将 Relay 地址、token 与非敏感选项写入 `$HOME/.silvermoon/connector.yaml`。创建和更新必须原子进行，并在 POSIX 使用 `0600`、在 Windows 限制 ACL 为当前用户；环境变量与显式 token 文件保留为覆盖方式。移除新配置中的自定义 connector ID 和显示名，并为既有安装提供明确迁移路径。
 
 ## Acceptance criteria
 
@@ -26,4 +26,4 @@
 
 ### I-AC03: 一次配置即可安全重启
 
-UI、API 与 CLI 测试证明用户只在添加设备时命名一次；首次配置安全保存凭据后，connector 可无交互重启，普通 profile 不包含明文 token，且客户端参数不能覆盖设备身份。
+UI、API 与 CLI 测试证明用户只在添加设备时命名一次；首次配置安全写入用户级 profile 后，connector 可无交互重启；权限不安全时明确拒绝读取，日志不泄露 token，且客户端参数不能覆盖设备身份。

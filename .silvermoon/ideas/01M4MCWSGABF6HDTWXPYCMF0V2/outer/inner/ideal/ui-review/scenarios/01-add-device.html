@@ -58,7 +58,7 @@
     </div>
     <ul class="callouts" aria-label="可见变化">
       <li>移除重复设备命名</li>
-      <li>凭据安全保存到用户 profile</li>
+      <li>凭据写入受保护的用户 profile</li>
     </ul>
   </header>
   <main class="comparison">
@@ -103,7 +103,7 @@
             <div class="token-box">
               <strong>立即复制连接 token</strong>
               <code>smr1_••••••••••••_••••••••••••••••••••••••</code>
-              首次配置将 Relay 地址写入用户 profile，并把 token 存入系统凭据库；后续启动无需重复输入，也不再设置 ID 或显示名。
+              首次配置将 Relay 地址与 token 写入仅当前用户可读的 $HOME/.silvermoon/connector.yaml；后续启动无需重复输入，也不再设置 ID 或显示名。
             </div>
           </div>
           <div class="card device-card">

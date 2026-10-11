@@ -22,4 +22,4 @@
 
 ### D-AC03: 新设备可从安全 profile 重启
 
-从生产 dashboard 添加一个设备并完成首次配置后，connector 可从用户级 profile 无交互重启，并看到服务端名称、在线状态及其 session；检查普通配置不含明文 token，headless token 文件仅对当前用户可读。
+从生产 dashboard 添加一个设备并完成首次配置后，connector 可从 `$HOME/.silvermoon/connector.yaml` 无交互重启，并看到服务端名称、在线状态及其 session；检查 profile 仅对当前用户可读，权限放宽后 connector 明确拒绝读取。

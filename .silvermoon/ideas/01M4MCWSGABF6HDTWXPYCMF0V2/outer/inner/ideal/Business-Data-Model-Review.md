@@ -73,7 +73,7 @@ erDiagram
 4. Relay 从认证结果推导设备身份，不接受 connector 提交的 ID 或名称覆盖服务端事实。
 5. 连接关闭、租约到期或 token 撤销必须原子释放活跃资格；命令不得路由给失效连接。
 6. token 生命周期变化不得改变既有 Agent Session 的设备归属。
-7. 用户级 connector profile 与本地凭据只是服务端 token 绑定的客户端投影，不得成为设备身份或授权状态的第二事实来源。
+7. `$HOME/.silvermoon/connector.yaml` 中的本地 token 只是服务端绑定的客户端副本，不得成为设备身份或授权状态的第二事实来源。
 
 ## 迁移与兼容性
 
@@ -81,7 +81,7 @@ erDiagram
 - 每个 token 只有一个历史 connector 关联时，可迁移为固定设备绑定。
 - 同一 token 曾关联多个 connector 时不得自动猜测；发布前必须列出并要求显式拆分或选择归属。
 - 兼容期可读取旧 CLI 的 connector ID 以完成一次性匹配，但服务端绑定后不得允许其改变身份。
-- 现有环境变量和 token 文件继续作为显式覆盖；桌面默认迁移到系统凭据库，普通 profile 只保存凭据引用。headless token 文件必须验证仅当前用户可读，权限不安全时明确拒绝启动。
+- 现有环境变量和 token 文件继续作为显式覆盖；默认将连接配置迁移到 `$HOME/.silvermoon/connector.yaml`，并验证该文件仅当前用户可读。权限不安全时明确拒绝启动，不引入首期不需要的凭据 provider 抽象。
 - successor-token 的 prepare/commit 轮换属于后续需求；本模型通过 Device 与 Token 分离为其保留空间。
 
 是否批准“服务端设备是稳定身份、token 固定绑定设备并严格单连接”的模型，按上述迁移边界进入实施设计？

@@ -52,7 +52,7 @@
       <ul class="deltas" aria-label="关键变化">
         <li>只命名一次</li>
         <li>token 归属于设备</li>
-        <li>一次安全配置后直接启动</li>
+        <li>一个受保护的用户级 profile</li>
       </ul>
     </section>
     <div class="frame-shell">
@@ -63,7 +63,7 @@
       <strong>是否批准统一的“添加设备”入口与设备卡片归属？</strong>
     </section>
   </main>
-  <footer>升级期 successor token 不在本轮 UI 范围内；普通 profile 不保存明文 token，headless 环境可显式选择权限受限的 token 文件。</footer>
+  <footer>升级期 successor token 不在本轮 UI 范围内；首版不引入凭据 provider 抽象，环境变量和显式 token 文件仍可覆盖 profile。</footer>
   <script>
     const frame = document.querySelector("#scenario-frame");
     window.addEventListener("message", (event) => {
