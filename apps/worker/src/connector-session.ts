@@ -20,6 +20,7 @@ interface ConnectionAttachment {
   tokenId: string;
   userId: string;
   socket: WebSocket;
+  leaseExpiresAt: number;
 }
 
 interface CommandWaiter {
@@ -37,6 +38,15 @@ function eventPreview(event: AgentSessionEvent): string | null {
   return event.text.length <= 512
     ? event.text
     : `${event.text.slice(0, 509)}...`;
+}
+
+export const CONNECTION_LEASE_MS = 60_000;
+
+export function connectionLeaseIsActive(
+  leaseExpiresAt: number,
+  now = Date.now(),
+): boolean {
+  return leaseExpiresAt > now;
 }
 
 export class ConnectorSession extends DurableObject<Env> {
@@ -58,9 +68,17 @@ export class ConnectorSession extends DurableObject<Env> {
       return Response.json({ error: "unauthorized" }, { status: 401 });
     }
 
+    const now = Date.now();
     for (const connection of this.connections) {
+      if (connectionLeaseIsActive(connection.leaseExpiresAt, now)) {
+        return Response.json(
+          { error: "token-already-connected" },
+          { status: 409 },
+        );
+      }
       this.cancelCommandWaiters(connection.connectionId);
-      connection.socket.close(4009, "replaced by a newer connector connection");
+      this.connections.delete(connection);
+      connection.socket.close(4008, "connection lease expired");
     }
 
     const pair = new WebSocketPair();
@@ -72,6 +90,7 @@ export class ConnectorSession extends DurableObject<Env> {
       tokenId,
       userId,
       socket: server,
+      leaseExpiresAt: now + CONNECTION_LEASE_MS,
     };
     this.connections.add(attachment);
     server.addEventListener("close", () => {
@@ -159,9 +178,6 @@ export class ConnectorSession extends DurableObject<Env> {
     attachment: ConnectionAttachment,
     input: RegistrationInput,
   ): ReturnType<ConnectorRpcContext["register"]> {
-    if (input.connectorId !== attachment.connectorId) {
-      throw new Error("Authenticated connector ID does not match registration.");
-    }
     await this.env.DB.batch([
       this.env.DB.prepare(
         `UPDATE connector_commands SET status = 'failed',
@@ -172,13 +188,12 @@ export class ConnectorSession extends DurableObject<Env> {
            AND status IN ('queued', 'sent', 'accepted')`,
       ).bind(attachment.userId, attachment.connectorId),
       this.env.DB.prepare(
-        `UPDATE connectors SET display_name = ?1, agent_name = ?2,
-          agent_version = ?3, capabilities_json = ?4, status = 'online',
+        `UPDATE connectors SET agent_name = ?1,
+          agent_version = ?2, capabilities_json = ?3, status = 'online',
           connected_at = CURRENT_TIMESTAMP, disconnected_at = NULL,
           last_seen_at = CURRENT_TIMESTAMP
-         WHERE user_id = ?5 AND id = ?6`,
+         WHERE user_id = ?4 AND id = ?5`,
       ).bind(
-        input.displayName,
         input.agent.name,
         input.agent.version ?? null,
         JSON.stringify(input.capabilities),
@@ -196,6 +211,7 @@ export class ConnectorSession extends DurableObject<Env> {
   private async touchConnector(
     attachment: ConnectionAttachment,
   ): Promise<void> {
+    attachment.leaseExpiresAt = Date.now() + CONNECTION_LEASE_MS;
     await this.env.DB.prepare(
       `UPDATE connectors SET last_seen_at = CURRENT_TIMESTAMP, status = 'online'
        WHERE user_id = ?1 AND id = ?2`,

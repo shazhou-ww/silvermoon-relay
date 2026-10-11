@@ -5,9 +5,14 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   ActionType,
+  ChatInputAnswerState,
+  ChatInputAnswerValueKind,
+  ChatInputQuestionKind,
+  ChatInputResponseKind,
   ChatInteractivity,
   MessageKind,
   PendingMessageKind,
+  ResponsePartKind,
   chatReducer,
   sessionReducer,
   type ChatAction,
@@ -99,6 +104,74 @@ interface TrackedChat {
   state: ChatState;
   subscription: Subscription;
   waiters: Set<() => void>;
+  dispatches: AgentHostDispatchAcknowledger;
+}
+
+interface PendingDispatch {
+  resolve(): void;
+  reject(error: Error): void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
+export class AgentHostDispatchAcknowledger {
+  private readonly pending = new Map<number, PendingDispatch>();
+
+  constructor(private readonly timeoutMs = AHP_REQUEST_TIMEOUT_MS) {}
+
+  wait(clientSequence: number, actionType: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(clientSequence);
+        reject(new Error(
+          `Timed out waiting for Agent Host to acknowledge ${actionType}.`,
+        ));
+      }, this.timeoutMs);
+      this.pending.set(clientSequence, {
+        resolve: () => {
+          clearTimeout(timeout);
+          resolve();
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+        timeout,
+      });
+    });
+  }
+
+  settle(
+    clientSequence: number,
+    actionType: string,
+    rejectionReason?: string,
+  ): boolean {
+    const pending = this.pending.get(clientSequence);
+    if (!pending) return false;
+    this.pending.delete(clientSequence);
+    if (rejectionReason) {
+      pending.reject(new Error(
+        `Agent Host rejected ${actionType}: ${rejectionReason}`,
+      ));
+    } else {
+      pending.resolve();
+    }
+    return true;
+  }
+
+  reject(clientSequence: number, error: Error): void {
+    const pending = this.pending.get(clientSequence);
+    if (!pending) return;
+    this.pending.delete(clientSequence);
+    pending.reject(error);
+  }
+
+  rejectAll(reason: string): void {
+    for (const [clientSequence, pending] of this.pending) {
+      this.pending.delete(clientSequence);
+      clearTimeout(pending.timeout);
+      pending.reject(new Error(`Agent Host dispatch failed: ${reason}`));
+    }
+  }
 }
 
 interface ConnectionCallbacks {
@@ -372,6 +445,7 @@ function responsePartId(
 ): string {
   if (part.kind === "markdown" || part.kind === "reasoning") return part.id;
   if (part.kind === "toolCall") return part.toolCall.toolCallId;
+  if (part.kind === "inputRequest") return part.request.id;
   return `${part.kind}:${partIndex}`;
 }
 
@@ -429,6 +503,41 @@ function responsePartEventDraft(
             partIndex,
             partKind: "system",
             update: "snapshot",
+          },
+          createdAt,
+          sortOrder: partIndex + 1,
+        }
+      : null;
+  }
+  if (part.kind === "inputRequest") {
+    const questions = part.request.questions ?? [];
+    const answeredText = part.response === ChatInputResponseKind.Accept
+      && questions.length === 1
+      ? part.request.answers?.[questions[0].id]
+      : undefined;
+    const answer = answeredText?.state === ChatInputAnswerState.Submitted
+      && answeredText.value.kind === ChatInputAnswerValueKind.Text
+      ? boundedContent(answeredText.value.value, 65_536)
+      : null;
+    const prompt = boundedContent(
+      part.request.message
+        ?? questions.map((question) => question.message).join("\n"),
+      65_536,
+    );
+    const text = answer ?? prompt;
+    return text
+      ? {
+          id: eventId(idParts),
+          type: "message",
+          role: answer ? "user" : "assistant",
+          text,
+          data: {
+            turnId,
+            partId,
+            partIndex,
+            partKind: "request",
+            update: "snapshot",
+            inputRequestId: part.request.id,
           },
           createdAt,
           sortOrder: partIndex + 1,
@@ -564,6 +673,54 @@ export function createAgentHostMessageAction(
   id = randomUUID(),
   startedAt = new Date().toISOString(),
 ): ChatAction {
+  const openInputRequests = state.activeTurn?.responseParts.filter(
+    (part): part is Extract<
+      TurnResponsePart,
+      { kind: ResponsePartKind.InputRequest }
+    > =>
+      part.kind === ResponsePartKind.InputRequest
+      && part.response === undefined,
+  ) ?? [];
+  if (openInputRequests.length > 0) {
+    if (openInputRequests.length !== 1) {
+      throw new Error(
+        "Agent Host session has multiple open input requests.",
+      );
+    }
+    const request = openInputRequests[0].request;
+    const questions = request.questions ?? [];
+    if (
+      questions.length !== 1
+      || questions[0].kind !== ChatInputQuestionKind.Text
+    ) {
+      throw new Error(
+        "Agent Host session requires structured input that cannot be answered with a follow-up message.",
+      );
+    }
+    const question = questions[0];
+    if (
+      (question.min !== undefined && message.length < question.min)
+      || (question.max !== undefined && message.length > question.max)
+    ) {
+      throw new Error(
+        "Follow-up message does not satisfy the Agent Host input requirements.",
+      );
+    }
+    return {
+      type: ActionType.ChatInputCompleted,
+      requestId: request.id,
+      response: ChatInputResponseKind.Accept,
+      answers: {
+        [question.id]: {
+          state: ChatInputAnswerState.Submitted,
+          value: {
+            kind: ChatInputAnswerValueKind.Text,
+            value: message,
+          },
+        },
+      },
+    };
+  }
   const userMessage = {
     text: message,
     origin: { kind: MessageKind.User },
@@ -930,6 +1087,7 @@ class AgentHostWebSocketTransport implements AhpTransport {
 
 class AgentHostConnection {
   private readonly client: AhpClient;
+  private readonly clientId: string;
   private readonly rootSubscription: Subscription;
   private readonly sessionChannels = new Map<
     string,
@@ -939,16 +1097,19 @@ class AgentHostConnection {
   private readonly lastSequence = new Map<string, number>();
   private catalogByResource = new Map<string, SessionSummary>();
   private rootEventsDuringRefresh: SubscriptionEvent[] | null = null;
+  private nextClientSequence = 1;
   private closed = false;
 
   private constructor(
     readonly entry: AgentHostEndpointMetadata,
     client: AhpClient,
+    clientId: string,
     rootSubscription: Subscription,
     private readonly callbacks: ConnectionCallbacks,
     private readonly log: (message: string) => void,
   ) {
     this.client = client;
+    this.clientId = clientId;
     this.rootSubscription = rootSubscription;
   }
 
@@ -964,9 +1125,10 @@ class AgentHostConnection {
     });
     client.connect();
     const rootSubscription = client.attachSubscription(ROOT_CHANNEL);
+    const clientId = `silvermoon-connector-${randomUUID()}`;
     try {
       await client.initialize({
-        clientId: `silvermoon-connector-${randomUUID()}`,
+        clientId,
         protocolVersions: [entry.protocolVersion],
         initialSubscriptions: [ROOT_CHANNEL],
       });
@@ -977,6 +1139,7 @@ class AgentHostConnection {
     const connection = new AgentHostConnection(
       entry,
       client,
+      clientId,
       rootSubscription,
       callbacks,
       log,
@@ -1045,8 +1208,8 @@ class AgentHostConnection {
       throw new Error(`Agent Host session has no writable chat: ${sessionId}`);
     }
     const chat = await this.ensureChat(sessionId, chatResource);
-    this.client.dispatch(
-      chatResource,
+    await this.dispatchChatAction(
+      chat,
       createAgentHostMessageAction(chat.state, message),
     );
   }
@@ -1200,6 +1363,7 @@ class AgentHostConnection {
       state: result.snapshot.state as ChatState,
       subscription,
       waiters: new Set(),
+      dispatches: new AgentHostDispatchAcknowledger(),
     };
     void this.consumeChat(tracked);
     return tracked;
@@ -1210,6 +1374,8 @@ class AgentHostConnection {
       for await (const event of tracked.subscription) {
         if (event.type !== "action") continue;
         if (!event.params.action.type.startsWith("chat/")) continue;
+        this.settleDispatch(tracked, event);
+        if (event.params.rejectionReason) continue;
         tracked.state = chatReducer(
           tracked.state,
           event.params.action as ChatAction,
@@ -1224,7 +1390,46 @@ class AgentHostConnection {
       if (!this.closed) {
         this.log(`Agent Host chat subscription failed: ${errorMessage(error)}`);
       }
+      tracked.dispatches.rejectAll(errorMessage(error));
+      return;
     }
+    tracked.dispatches.rejectAll("chat subscription closed");
+  }
+
+  private dispatchChatAction(
+    tracked: TrackedChat,
+    action: ChatAction,
+  ): Promise<void> {
+    if (this.closed) {
+      return Promise.reject(new Error("Agent Host connection is closed."));
+    }
+    const clientSequence = this.nextClientSequence++;
+    const acknowledgement = tracked.dispatches.wait(
+      clientSequence,
+      action.type,
+    );
+    try {
+      this.client.dispatch(tracked.resource, action, clientSequence);
+    } catch (error) {
+      tracked.dispatches.reject(
+        clientSequence,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+    return acknowledgement;
+  }
+
+  private settleDispatch(
+    tracked: TrackedChat,
+    event: Extract<SubscriptionEvent, { type: "action" }>,
+  ): void {
+    const origin = event.params.origin;
+    if (!origin || origin.clientId !== this.clientId) return;
+    tracked.dispatches.settle(
+      origin.clientSeq,
+      event.params.action.type,
+      event.params.rejectionReason,
+    );
   }
 
   private async loadAllTurns(chat: TrackedChat): Promise<void> {
@@ -1292,6 +1497,32 @@ class AgentHostConnection {
           ?? new Date().toISOString(),
         sortOrder: 0,
       });
+      return;
+    }
+    if (
+      action.type === ActionType.ChatInputRequested
+      || action.type === ActionType.ChatInputAnswerChanged
+      || action.type === ActionType.ChatInputCompleted
+    ) {
+      const turn = tracked.state.activeTurn;
+      if (!turn) return;
+      const requestId = action.type === ActionType.ChatInputRequested
+        ? action.request.id
+        : action.requestId;
+      const partIndex = turn.responseParts.findIndex(
+        (part) =>
+          part.kind === ResponsePartKind.InputRequest
+          && part.request.id === requestId,
+      );
+      if (partIndex < 0) return;
+      const draft = responsePartEventDraft(
+        turn.id,
+        turn.responseParts[partIndex],
+        new Date().toISOString(),
+        partIndex,
+        `update:${event.params.serverSeq}`,
+      );
+      if (draft) this.publishEvent(tracked.sessionId, draft);
       return;
     }
     if (

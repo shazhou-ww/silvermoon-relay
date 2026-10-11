@@ -84,32 +84,40 @@ switching, filtering, reconnects, layout changes, and accessible return controls
 
 ## Run a connector
 
-Create a connection token in the Web UI, build the connector, and start it on
-the device that owns the Copilot sessions:
+Choose **Add device** in the Web UI, name it once, and save the generated
+profile as `$HOME/.silvermoon/connector.yaml`. Then build and start the
+connector on the device that owns the Copilot sessions:
 
 ```powershell
 pnpm --filter @silvermoon-ai/connector build
-$env:SILVERMOON_CONNECTION_TOKEN = "smr1_..."
-node .\packages\connector\dist\cli.js `
-  --id studio-laptop `
-  --display-name "Studio laptop" `
-  --working-directory D:\Code\my-project
+node .\packages\connector\dist\cli.js
 ```
 
 The WebSocket endpoint is derived from the relay origin:
 
 ```text
-wss://relay.silvermoon.work/v1/connectors/<connector-id>/connect
+wss://relay.silvermoon.work/v1/connect
 ```
 
-The token is sent only in the WebSocket `Authorization` header. It is never
-placed in the URL or printed. A protected token file can be used instead:
+Relay derives the stable device identity and name from the token. The
+connector cannot provide or override either value. The token is sent only in
+the WebSocket `Authorization` header and is never placed in the URL or logs.
+
+Existing environment variables and a protected token file remain supported.
+Token priority is `SILVERMOON_CONNECTION_TOKEN`, an explicit token file, then
+the profile:
 
 ```powershell
 node .\packages\connector\dist\cli.js `
-  --id studio-laptop `
   --token-file C:\Users\me\.config\silvermoon-relay-token
 ```
+
+CLI options and Relay/Copilot environment variables override non-sensitive
+profile values. Use `--write-config` with an environment token or token file
+to atomically write the profile. It is mode `0600` on POSIX and grants access
+only to the current user on Windows; unsafe profile permissions are rejected.
+Legacy `--id`, `--display-name`, and `SILVERMOON_CONNECTOR_ID` settings must be
+removed.
 
 Run `silvermoon-connector --help` for all environment variables and options.
 `--approve-all` allows remotely initiated sessions to approve every Copilot

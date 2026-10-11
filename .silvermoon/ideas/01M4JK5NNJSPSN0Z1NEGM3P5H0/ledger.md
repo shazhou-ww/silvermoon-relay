@@ -19,9 +19,9 @@
 ### Deployment steps
 
 - [x] **D-S01:** 发布兼容服务并核验 Connector 产物
-- [ ] **D-S02:** 执行真实目录冒烟验证
+- [x] **D-S02:** 执行真实目录冒烟验证
 
 ### Deployment acceptance criteria
 
-- [ ] **D-AC01:** subsession 在父 Session 下可见
-- [ ] **D-AC02:** 列表稳定且兼容
+- [x] **D-AC01:** subsession 在父 Session 下可见
+- [x] **D-AC02:** 列表稳定且兼容

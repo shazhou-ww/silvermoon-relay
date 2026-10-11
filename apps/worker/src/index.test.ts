@@ -2,6 +2,10 @@ import { env, SELF } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { AppEnv } from "./env";
 import { authenticate } from "./auth";
+import {
+  CONNECTION_LEASE_MS,
+  connectionLeaseIsActive,
+} from "./connector-session";
 import { beginOAuth, linkIdentity, validateOidcClaims } from "./oauth";
 import { createSession, setSessionCookies } from "./session";
 import { createToken, rotateToken } from "./tokens";
@@ -54,6 +58,7 @@ async function createSchema(): Promise<void> {
     `CREATE TABLE connection_tokens (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
+      device_id TEXT NOT NULL,
       secret_hash TEXT NOT NULL,
       token_hint TEXT NOT NULL,
       label TEXT NOT NULL,
@@ -63,6 +68,13 @@ async function createSchema(): Promise<void> {
       last_used_at TEXT,
       revoked_at TEXT,
       replaced_by_id TEXT
+    )`,
+    `CREATE TABLE devices (
+      user_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, id)
     )`,
     `CREATE TABLE daemons (
       id TEXT PRIMARY KEY,
@@ -295,15 +307,40 @@ describe("relay identity and token service", () => {
       {
         method: "POST",
         headers: sessionHeaders(session),
-        body: JSON.stringify({ label: "Test daemon", expiresInDays: 30 }),
+        body: JSON.stringify({ name: "Test device", expiresInDays: 30 }),
       },
     );
     expect(created.status).toBe(201);
     const body = await created.json<{
       token: string;
-      metadata: { id: string; tokenHint: string };
+      metadata: {
+        id: string;
+        deviceId: string;
+        deviceName: string;
+        tokenHint: string;
+      };
     }>();
     expect(body.token).toMatch(/^smr1_[A-Za-z0-9_-]{16}_[A-Za-z0-9_-]{43}$/u);
+    expect(body.metadata).toMatchObject({
+      deviceName: "Test device",
+    });
+
+    const clientIdentity = await SELF.fetch(
+      "https://relay.silvermoon.work/v1/connectors/client-selected/connect",
+      {
+        headers: {
+          authorization: `Bearer ${body.token}`,
+          connection: "Upgrade",
+          upgrade: "websocket",
+          "sec-websocket-version": "13",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+      },
+    );
+    expect(clientIdentity.status).toBe(409);
+    expect(await clientIdentity.json()).toEqual({
+      error: "connector-identity-managed-by-relay",
+    });
 
     const listed = await SELF.fetch(
       "https://relay.silvermoon.work/api/tokens",
@@ -314,7 +351,7 @@ describe("relay identity and token service", () => {
     expect(listText).toContain(body.metadata.tokenHint);
 
     const upgraded = await SELF.fetch(
-      "https://relay.silvermoon.work/v1/daemon/connect",
+      "https://relay.silvermoon.work/v1/connect",
       {
         headers: {
           authorization: `Bearer ${body.token}`,
@@ -322,7 +359,6 @@ describe("relay identity and token service", () => {
           upgrade: "websocket",
           "sec-websocket-version": "13",
           "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
-          "x-silvermoon-daemon-id": "daemon-02",
         },
       },
     );
@@ -333,9 +369,38 @@ describe("relay identity and token service", () => {
     });
     socket.accept();
 
+    const overlapping = await SELF.fetch(
+      "https://relay.silvermoon.work/v1/connect",
+      {
+        headers: {
+          authorization: `Bearer ${body.token}`,
+          connection: "Upgrade",
+          upgrade: "websocket",
+          "sec-websocket-version": "13",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+      },
+    );
+    expect(overlapping.status).toBe(409);
+    expect(await overlapping.json()).toEqual({
+      error: "token-already-connected",
+    });
+    const existingConnectionAlive = new Promise<MessageEvent>((resolve) => {
+      socket.addEventListener("message", resolve, { once: true });
+    });
+    socket.send(JSON.stringify({
+      id: 1,
+      method: "mutation",
+      params: {
+        path: "heartbeat",
+        input: { observedAt: new Date().toISOString() },
+      },
+    }));
+    await expect(existingConnectionAlive).resolves.toBeDefined();
+
     const other = await createToken(appEnv, "user-01", { label: "Other daemon" });
     const otherUpgrade = await SELF.fetch(
-      "https://relay.silvermoon.work/v1/daemon/connect",
+      "https://relay.silvermoon.work/v1/connect",
       {
         headers: {
           authorization: `Bearer ${other.token}`,
@@ -343,7 +408,6 @@ describe("relay identity and token service", () => {
           upgrade: "websocket",
           "sec-websocket-version": "13",
           "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
-          "x-silvermoon-daemon-id": "daemon-01",
         },
       },
     );
@@ -359,7 +423,7 @@ describe("relay identity and token service", () => {
     await expect(closed).resolves.toMatchObject({ code: 4003 });
 
     const rejected = await SELF.fetch(
-      "https://relay.silvermoon.work/v1/daemon/connect",
+      "https://relay.silvermoon.work/v1/connect",
       {
         headers: {
           authorization: `Bearer ${body.token}`,
@@ -367,7 +431,6 @@ describe("relay identity and token service", () => {
           upgrade: "websocket",
           "sec-websocket-version": "13",
           "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
-          "x-silvermoon-daemon-id": "daemon-03",
         },
       },
     );
@@ -392,6 +455,43 @@ describe("relay identity and token service", () => {
     }));
     await expect(acknowledged).resolves.toBeDefined();
     otherSocket.close(1000, "test complete");
+  });
+
+  it("allows reconnecting after the active connection closes", async () => {
+    const created = await createToken(appEnv, "user-01", {
+      name: "Reconnect device",
+    });
+
+    const headers = {
+      authorization: `Bearer ${created.token}`,
+      connection: "Upgrade",
+      upgrade: "websocket",
+      "sec-websocket-version": "13",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    };
+    const first = await SELF.fetch(
+      "https://relay.silvermoon.work/v1/connect",
+      { headers },
+    );
+    expect(first.status).toBe(101);
+    first.webSocket!.accept();
+    first.webSocket!.close(1000, "reconnect test");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const second = await SELF.fetch(
+      "https://relay.silvermoon.work/v1/connect",
+      { headers },
+    );
+    expect(second.status).toBe(101);
+    second.webSocket!.accept();
+    second.webSocket!.close(1000, "test complete");
+  });
+
+  it("treats a connection lease as available at its expiry boundary", () => {
+    const now = Date.now();
+    expect(connectionLeaseIsActive(now + CONNECTION_LEASE_MS, now)).toBe(true);
+    expect(connectionLeaseIsActive(now, now)).toBe(false);
+    expect(connectionLeaseIsActive(now - 1, now)).toBe(false);
   });
 
   it("prevents removing the final login identity", async () => {
@@ -491,7 +591,7 @@ describe("relay identity and token service", () => {
   it("validates token labels and expiration bounds", async () => {
     await expect(
       createToken(appEnv, "user-01", { label: "", expiresInDays: 30 }),
-    ).rejects.toThrow("invalid-label");
+    ).rejects.toThrow("invalid-device-name");
     await expect(
       createToken(appEnv, "user-01", {
         label: "Too long",
@@ -523,8 +623,9 @@ describe("relay identity and token service", () => {
     const connectorToken = await createToken(appEnv, "user-01", {
       label: "Studio connector",
     });
+    const connectorId = connectorToken.metadata.deviceId;
     const upgraded = await SELF.fetch(
-      "https://relay.silvermoon.work/v1/connectors/studio-laptop/connect",
+      "https://relay.silvermoon.work/v1/connect",
       {
         headers: {
           authorization: `Bearer ${connectorToken.token}`,
@@ -585,14 +686,12 @@ describe("relay identity and token service", () => {
     await env.DB.prepare(
       `INSERT INTO connector_commands
         (id, user_id, connector_id, type, session_id, payload_json, status)
-       VALUES (?1, 'user-01', 'studio-laptop', 'session.history',
+       VALUES (?1, 'user-01', ?2, 'session.history',
         'stale-session', '{}', 'accepted')`,
     )
-      .bind(staleCommandId)
+      .bind(staleCommandId, connectorId)
       .run();
     sendRpc(1, "mutation", "register", {
-      connectorId: "studio-laptop",
-      displayName: "Studio laptop",
       agent: { name: "Test agent", version: "1.0.0" },
       capabilities: {
         listSessions: true,
@@ -649,11 +748,11 @@ describe("relay identity and token service", () => {
         status: string;
         sessionCount: number;
       }>>();
-      return connectors.find((item) => item.id === "studio-laptop");
+      return connectors.find((item) => item.id === connectorId);
     }).toMatchObject({ status: "online", sessionCount: 2 });
 
     const sessionList = await SELF.fetch(
-      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions",
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions`,
       { headers: sessionHeaders(session) },
     );
     expect(await sessionList.json()).toContainEqual(expect.objectContaining({
@@ -662,7 +761,7 @@ describe("relay identity and token service", () => {
       canSendMessage: false,
     }));
     const readOnlyMessage = await SELF.fetch(
-      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-child/messages",
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-child/messages`,
       {
         method: "POST",
         headers: sessionHeaders(session),
@@ -675,7 +774,7 @@ describe("relay identity and token service", () => {
     });
 
     const historySync = await SELF.fetch(
-      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-existing/events/sync",
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-existing/events/sync`,
       {
         method: "POST",
         headers: sessionHeaders(session),
@@ -696,7 +795,7 @@ describe("relay identity and token service", () => {
     });
     const historyCommandId = String(historyCommand.commandId);
     const duplicateHistorySync = await SELF.fetch(
-      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-existing/events/sync",
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-existing/events/sync`,
       {
         method: "POST",
         headers: sessionHeaders(session),
@@ -749,7 +848,7 @@ describe("relay identity and token service", () => {
     });
     await waitForData(6);
     const historyEvents = await SELF.fetch(
-      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-existing/events",
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-existing/events`,
       { headers: sessionHeaders(session) },
     );
     expect(
@@ -770,7 +869,7 @@ describe("relay identity and token service", () => {
       ],
     });
     const currentHistorySync = await SELF.fetch(
-      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-existing/events/sync",
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-existing/events/sync`,
       {
         method: "POST",
         headers: sessionHeaders(session),
@@ -784,20 +883,20 @@ describe("relay identity and token service", () => {
     expect(
       await env.DB.prepare(
         `SELECT status FROM agent_sessions
-         WHERE user_id = 'user-01' AND connector_id = 'studio-laptop'
+         WHERE user_id = 'user-01' AND connector_id = ?1
            AND id = 'session-existing'`,
-      ).first<{ status: string }>(),
+      ).bind(connectorId).first<{ status: string }>(),
     ).toMatchObject({ status: "idle" });
     expect(
       await env.DB.prepare(
         `SELECT COUNT(*) AS count FROM connector_commands
-         WHERE user_id = 'user-01' AND connector_id = 'studio-laptop'
+         WHERE user_id = 'user-01' AND connector_id = ?1
            AND session_id = 'session-existing' AND type = 'session.history'`,
-      ).first<{ count: number }>(),
+      ).bind(connectorId).first<{ count: number }>(),
     ).toMatchObject({ count: 1 });
 
     const create = await SELF.fetch(
-      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions",
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions`,
       {
         method: "POST",
         headers: sessionHeaders(session),
@@ -840,14 +939,14 @@ describe("relay identity and token service", () => {
 
     await expect.poll(async () => {
       const response = await SELF.fetch(
-        "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions",
+        `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions`,
         { headers: sessionHeaders(session) },
       );
       const sessions = await response.json<Array<{ id: string }>>();
       return sessions.some((item) => item.id === "session-new");
     }).toBe(true);
     const continued = await SELF.fetch(
-      "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-new/messages",
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/messages`,
       {
         method: "POST",
         headers: sessionHeaders(session),
@@ -881,7 +980,7 @@ describe("relay identity and token service", () => {
 
     await expect.poll(async () => {
       const response = await SELF.fetch(
-        "https://relay.silvermoon.work/api/connectors/studio-laptop/sessions/session-new/events",
+        `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/events`,
         { headers: sessionHeaders(session) },
       );
       const body = await response.json<{ events: Array<{ id: string }> }>();

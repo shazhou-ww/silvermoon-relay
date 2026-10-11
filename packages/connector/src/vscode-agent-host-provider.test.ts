@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   ActionType,
+  ChatInputAnswerState,
+  ChatInputAnswerValueKind,
+  ChatInputQuestionKind,
+  ChatInputResponseKind,
   ChatInteractivity,
   MessageKind,
   PendingMessageKind,
@@ -16,8 +20,9 @@ import {
   type ChatState,
   type SessionSummary,
 } from "@microsoft/agent-host-protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  AgentHostDispatchAcknowledger,
   agentHostChatHistoryToEvents,
   agentHostSummaryToSession,
   agentHostSummaryToSubsessions,
@@ -340,6 +345,132 @@ describe("VS Code Agent Host mapping", () => {
         origin: { kind: MessageKind.User },
       },
     });
+  });
+
+  it("answers a single open text input instead of queueing behind it", () => {
+    const state = chatState(true);
+    state.activeTurn!.responseParts = [{
+      kind: ResponsePartKind.InputRequest,
+      request: {
+        id: "input-1",
+        message: "What should I do next?",
+        questions: [{
+          id: "answer-1",
+          kind: ChatInputQuestionKind.Text,
+          message: "Next instruction",
+          required: true,
+        }],
+      },
+    }];
+
+    expect(createAgentHostMessageAction(
+      state,
+      "Continue with the focused tests",
+    )).toEqual({
+      type: ActionType.ChatInputCompleted,
+      requestId: "input-1",
+      response: ChatInputResponseKind.Accept,
+      answers: {
+        "answer-1": {
+          state: ChatInputAnswerState.Submitted,
+          value: {
+            kind: ChatInputAnswerValueKind.Text,
+            value: "Continue with the focused tests",
+          },
+        },
+      },
+    });
+  });
+
+  it("rejects follow-ups that cannot satisfy structured input", () => {
+    const state = chatState(true);
+    state.activeTurn!.responseParts = [{
+      kind: ResponsePartKind.InputRequest,
+      request: {
+        id: "input-1",
+        questions: [{
+          id: "answer-1",
+          kind: ChatInputQuestionKind.Boolean,
+          message: "Approve?",
+        }],
+      },
+    }];
+
+    expect(() => createAgentHostMessageAction(state, "yes")).toThrow(
+      "requires structured input",
+    );
+  });
+
+  it("projects resolved text input as a durable user message", () => {
+    const state = chatState(true);
+    state.activeTurn!.responseParts = [{
+      kind: ResponsePartKind.InputRequest,
+      request: {
+        id: "input-1",
+        message: "What should I do next?",
+        questions: [{
+          id: "answer-1",
+          kind: ChatInputQuestionKind.Text,
+          message: "Next instruction",
+        }],
+        answers: {
+          "answer-1": {
+            state: ChatInputAnswerState.Submitted,
+            value: {
+              kind: ChatInputAnswerValueKind.Text,
+              value: "Continue with the focused tests",
+            },
+          },
+        },
+      },
+      response: ChatInputResponseKind.Accept,
+    }];
+
+    expect(agentHostChatHistoryToEvents("session-1", state)).toContainEqual(
+      expect.objectContaining({
+        id: "ahp:turn-2:part:input-1",
+        role: "user",
+        text: "Continue with the focused tests",
+        data: expect.objectContaining({
+          inputRequestId: "input-1",
+          partKind: "request",
+        }),
+      }),
+    );
+  });
+});
+
+describe("VS Code Agent Host dispatch acknowledgements", () => {
+  it("resolves accepted dispatches and rejects server rejections", async () => {
+    const acknowledgements = new AgentHostDispatchAcknowledger();
+    const accepted = acknowledgements.wait(1, "chat/inputCompleted");
+    expect(acknowledgements.settle(1, "chat/inputCompleted")).toBe(true);
+    await expect(accepted).resolves.toBeUndefined();
+
+    const rejected = acknowledgements.wait(2, "chat/inputCompleted");
+    expect(acknowledgements.settle(
+      2,
+      "chat/inputCompleted",
+      "input request is no longer open",
+    )).toBe(true);
+    await expect(rejected).rejects.toThrow(
+      "input request is no longer open",
+    );
+  });
+
+  it("rejects dispatches that are never acknowledged", async () => {
+    vi.useFakeTimers();
+    try {
+      const acknowledgements = new AgentHostDispatchAcknowledger(10);
+      const pending = acknowledgements.wait(1, "chat/pendingMessageSet");
+      const rejection = expect(pending).rejects.toThrow(
+        "Timed out waiting for Agent Host",
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

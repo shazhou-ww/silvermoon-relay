@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>添加设备主流程</title>
+  <style>
+    :root { color-scheme:light; --surface:#fff; --subtle:#f4f5f6; --ink:#1b1d1f; --muted:#62686e; --border:#d8dcdf; --accent:#176b62; --blue:#4d5fd1; }
+    * { box-sizing:border-box; }
+    html { min-width:300px; background:var(--surface); }
+    body { min-width:300px; margin:0; padding:18px; color:var(--ink); background:var(--surface); font:14px/1.5 "Segoe UI",sans-serif; }
+    .heading { display:grid; grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr); gap:24px; align-items:end; margin-bottom:14px; }
+    h1 { margin:0; font-size:20px; }
+    .heading p { margin:4px 0 0; color:var(--muted); }
+    .callouts { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; margin:0; padding:0; list-style:none; }
+    .callouts li { padding:5px 8px; color:#125d55; background:#e8f3f1; border-radius:5px; font-size:12px; font-weight:650; }
+    .comparison { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:start; }
+    .state { min-width:0; overflow:hidden; border:1px solid var(--border); border-radius:7px; }
+    .state.after { border-color:#8abdb7; }
+    .state-label { display:flex; justify-content:space-between; gap:12px; padding:9px 12px; background:var(--subtle); border-bottom:1px solid var(--border); }
+    .state-label span { color:var(--muted); font-size:12px; }
+    .surface { min-height:590px; padding:16px; background:#f8f9fb; }
+    .dialog { max-width:520px; margin:auto; padding:18px; background:#fff; border:1px solid #e0e3e7; border-radius:12px; box-shadow:0 16px 45px rgba(28,36,50,.09); }
+    .dialog h2 { margin:0; font-size:18px; }
+    .dialog > p { margin:5px 0 16px; color:var(--muted); font-size:12px; }
+    .card { margin-top:12px; padding:14px; border:1px solid #e0e3e7; border-radius:9px; }
+    .card h3 { margin:0; font-size:14px; }
+    .card p { margin:3px 0 11px; color:var(--muted); font-size:11px; }
+    .row { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:9px 0; border-top:1px solid #edf0f2; }
+    .row:first-of-type { border-top:0; }
+    .row strong, .row span { display:block; }
+    .row span { color:var(--muted); font-size:11px; }
+    .dot { display:inline-block; width:7px; height:7px; margin-right:7px; background:#29a56c; border-radius:50%; }
+    .form { display:grid; grid-template-columns:1fr 95px auto; gap:8px; align-items:end; }
+    label span { display:block; margin-bottom:4px; color:var(--muted); font-size:11px; font-weight:650; }
+    input { width:100%; height:34px; padding:0 9px; border:1px solid #cfd5dc; border-radius:6px; background:#fff; }
+    button { min-height:34px; padding:0 12px; color:#fff; background:var(--blue); border:0; border-radius:6px; font-weight:650; }
+    .secondary { color:var(--ink); background:#fff; border:1px solid #cfd5dc; }
+    .device-card { display:grid; gap:10px; }
+    .device-head { display:flex; justify-content:space-between; gap:10px; align-items:start; }
+    .badge { padding:3px 7px; color:#12643f; background:#e6f6ed; border-radius:999px; font-size:10px; font-weight:700; }
+    .token-box { padding:10px; color:#243779; background:#edf0ff; border:1px solid #cbd3ff; border-radius:7px; font-size:11px; }
+    code { display:block; margin:6px 0; overflow:hidden; padding:7px; color:#222; background:#fff9; border-radius:5px; white-space:nowrap; text-overflow:ellipsis; }
+    @media (max-width:760px) {
+      body { padding:12px; }
+      .heading, .comparison { grid-template-columns:1fr; }
+      .callouts { justify-content:flex-start; }
+      .surface { min-height:0; }
+      .form { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="heading">
+    <div>
+      <h1>添加一台名为 “Studio laptop” 的设备</h1>
+      <p>Before 与 After 使用同一账户、名称、30 天有效期和在线设备数据。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>移除重复设备命名</li>
+      <li>凭据写入受保护的用户 profile</li>
+    </ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>当前设置弹窗</span></header>
+      <div class="surface">
+        <div class="dialog">
+          <h2>Account and connections</h2>
+          <p>Manage Devices, connection tokens, identities, and signed-in browsers.</p>
+          <div class="card">
+            <h3>Connected Devices</h3>
+            <p>设备名称由 connector 连接时另行提交。</p>
+            <div class="row"><div><strong><i class="dot"></i>Office PC</strong><span>GitHub Copilot · 4 Sessions</span></div><span>online</span></div>
+          </div>
+          <div class="card">
+            <h3>Connection tokens</h3>
+            <p>Create a token for a Device. The full value appears once.</p>
+            <div class="form">
+              <label><span>Label</span><input value="Studio laptop" readonly></label>
+              <label><span>Expires</span><input value="30" readonly></label>
+              <button type="button">Create token</button>
+            </div>
+            <div class="row"><div><strong>Studio laptop</strong><span>•••• R7k2 · Never used</span></div><button class="secondary" type="button">Rotate</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>拟议设置弹窗</span></header>
+      <div class="surface">
+        <div class="dialog">
+          <h2>Devices</h2>
+          <p>添加并管理可连接到此账户的设备。</p>
+          <div class="card">
+            <h3>Add device</h3>
+            <p>此名称由服务端保存，并显示在所有 session 中。</p>
+            <div class="form">
+              <label><span>Device name</span><input value="Studio laptop" readonly></label>
+              <label><span>Expires</span><input value="30" readonly></label>
+              <button type="button">Add device</button>
+            </div>
+            <div class="token-box">
+              <strong>立即复制连接 token</strong>
+              <code>smr1_••••••••••••_••••••••••••••••••••••••</code>
+              首次配置将 Relay 地址与 token 写入仅当前用户可读的 $HOME/.silvermoon/connector.yaml；后续启动无需重复输入，也不再设置 ID 或显示名。
+            </div>
+          </div>
+          <div class="card device-card">
+            <div class="device-head"><div><strong><i class="dot"></i>Office PC</strong><p>GitHub Copilot · 4 Sessions · token •••• P3d8</p></div><span class="badge">online</span></div>
+            <div><button class="secondary" type="button">Rotate token</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({ type:"ui-review:height", height:document.documentElement.scrollHeight }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>
