@@ -218,7 +218,10 @@ test("view options reveal hidden states and focus device groups", async ({ page 
 
   await page.getByRole("button", { name: "Session view options" }).click()
   await page.getByRole("menuitemcheckbox", { name: "Group by Device" }).click()
-  await expect(page.getByRole("button", { name: /Studio laptop/ }))
+  const studioGroup = page.getByRole("button", { name: /Studio laptop/ })
+  await expect(studioGroup).toHaveCSS("position", "sticky")
+  await expect(studioGroup).toHaveCSS("top", "0px")
+  await expect(studioGroup)
     .toHaveAttribute("aria-expanded", "true")
   await expect(page.getByRole("button", { name: /Work desktop/ }))
     .toHaveAttribute("aria-expanded", "false")
