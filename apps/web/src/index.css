@@ -805,6 +805,9 @@ textarea:focus-visible {
 }
 
 .session-device-heading {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: grid;
   width: 100%;
   min-height: 2.15rem;
@@ -813,7 +816,9 @@ textarea:focus-visible {
   align-items: center;
   padding: 0.45rem 0.75rem 0.3rem;
   color: var(--muted-foreground);
-  background: transparent;
+  background: color-mix(in srgb, var(--relay-panel) 96%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 72%, transparent);
+  backdrop-filter: blur(0.4rem);
   border: 0;
   text-align: left;
 }
@@ -1547,6 +1552,55 @@ textarea:focus-visible {
 
 .transcript-empty-filtered {
   min-height: 12rem;
+}
+
+.history-state-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.85rem 0;
+  padding: 0.7rem 0.85rem;
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--muted) 28%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  font-size: 0.78rem;
+}
+
+.history-state-notice strong {
+  color: var(--foreground);
+}
+
+.history-state-notice.is-error {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 6%, transparent);
+  border-color: color-mix(in srgb, var(--destructive) 32%, var(--border));
+}
+
+.history-state-notice.is-error > svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.history-state-notice.is-error > span {
+  display: grid;
+  flex: 1;
+  gap: 0.1rem;
+}
+
+.history-state-notice button {
+  padding: 0.3rem 0.55rem;
+  color: currentColor;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 0.4rem;
+  font: inherit;
+  font-weight: 650;
+}
+
+.history-state-notice button:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
 .session-composer-shell {

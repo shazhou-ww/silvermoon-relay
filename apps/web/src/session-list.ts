@@ -86,6 +86,15 @@ export function normalizedSessionStatus(status: string): SessionStatus {
     : "unknown"
 }
 
+export function sessionIsArchived(session: {
+  status: string
+  nativeStatus?: string | null
+}): boolean {
+  const nativeStatus = Number(session.nativeStatus)
+  return session.status === "closed"
+    || (Number.isInteger(nativeStatus) && (nativeStatus & 64) !== 0)
+}
+
 export function countSessionStatuses(
   sessions: readonly Pick<FilterableSession, "status">[],
 ): SessionStatusCounts {

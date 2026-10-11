@@ -121,6 +121,7 @@ async function createSchema(): Promise<void> {
       last_message_preview TEXT,
       parent_session_id TEXT,
       can_send_message INTEGER NOT NULL DEFAULT 1,
+      history_synced_at TEXT,
       PRIMARY KEY (user_id, connector_id, id)
     )`,
     `CREATE TABLE agent_session_events (
@@ -904,6 +905,30 @@ describe("relay identity and token service", () => {
         }),
       ],
     });
+    sendRpc(10, "mutation", "syncSessions", {
+      sessions: [{
+        id: "session-existing",
+        title: "Existing session",
+        status: "gone",
+        createdAt: now,
+        updatedAt: new Date(Date.now() + 60_000).toISOString(),
+        lastMessagePreview: "Ready to continue",
+        canSendMessage: false,
+      }],
+    });
+    await waitForData(10);
+    const historyAfterGone = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-existing/events`,
+      { headers: sessionHeaders(session) },
+    );
+    expect(
+      await historyAfterGone.json<{ events: Array<{ id: string }> }>(),
+    ).toMatchObject({
+      events: [
+        expect.objectContaining({ id: "history-event-1" }),
+        expect.objectContaining({ id: "history-event-2" }),
+      ],
+    });
     const currentHistorySync = await SELF.fetch(
       `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-existing/events/sync`,
       {
@@ -918,11 +943,17 @@ describe("relay identity and token service", () => {
     });
     expect(
       await env.DB.prepare(
-        `SELECT status FROM agent_sessions
+        `SELECT status, history_synced_at FROM agent_sessions
          WHERE user_id = 'user-01' AND connector_id = ?1
            AND id = 'session-existing'`,
-      ).bind(connectorId).first<{ status: string }>(),
-    ).toMatchObject({ status: "idle" });
+      ).bind(connectorId).first<{
+        status: string;
+        history_synced_at: string | null;
+      }>(),
+    ).toMatchObject({
+      status: "gone",
+      history_synced_at: expect.any(String),
+    });
     expect(
       await env.DB.prepare(
         `SELECT COUNT(*) AS count FROM connector_commands

@@ -19,6 +19,15 @@ Windows 首次 profile 创建修复经重新验收后由 release commit
 - Pages deployment:
   <https://86ffeaa2.silvermoon-work.pages.dev>
 
+统一设备 UX 与旧 connector 兼容修复经重新验收后由 release commit
+`b3fe439408fa7a30eb52234a4b3aff2be76b31db` 发布：
+
+- GitHub Actions run:
+  <https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38114630134>
+- Worker version: `b149c01f-a353-4b24-9869-1fda2d0e600d`
+- Pages deployment:
+  <https://0fcd3f85.silvermoon-work.pages.dev>
+
 ## 数据连续性
 
 发布前生产查询没有发现同一 token 绑定多个 connector 的歧义数据。发布后：
@@ -35,6 +44,14 @@ Windows 首次 profile 创建修复经重新验收后由 release commit
 - `https://relay.silvermoon.work/health` 返回
   `{"service":"silvermoon-relay","status":"ok"}`。
 - `https://silvermoon.work/` 返回 HTTP 200。
+- 强制刷新生产页面后，设置对话框标题为 `Devices`，包含单一
+  `Add device` 流程和统一设备卡片，旧 `Connection tokens` 区块不存在。
+- 使用生产 dashboard 创建短期设备后，旧
+  `/v1/connectors/client-selected/connect` 路径、旧
+  `X-Silvermoon-Connector-Id` header 以及注册 payload 中的 ID/display
+  name 均可继续使用；Relay 返回 token 绑定的
+  `device-GVcF11rT1FzRQkPE`，服务端设备名称未被客户端值覆盖。测试 token
+  随后已撤销。
 
 ## Connector 发布边界
 

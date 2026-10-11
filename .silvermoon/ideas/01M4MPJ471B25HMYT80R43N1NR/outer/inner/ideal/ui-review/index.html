@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Done Session 历史详情评审</title>
+  <style>
+    :root{color-scheme:light;--canvas:#f3f5f7;--surface:#fff;--ink:#17212b;--muted:#687487;--border:#d8dfe8;--accent:#3454d1;--soft:#e3e8fb}
+    *{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:14px/1.5 "Segoe UI",sans-serif}a{color:var(--accent)}header,main,footer{width:min(1180px,calc(100% - 32px));margin:auto}.head{display:flex;justify-content:space-between;gap:24px;padding:28px 0 20px;border-bottom:1px solid var(--border)}h1{margin:0;font-size:27px}.head p{margin:6px 0 0;color:var(--muted)}.tag{white-space:nowrap;color:var(--muted)}main{padding:20px 0 36px}.decision{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:18px;background:var(--surface);border:1px solid var(--border);border-radius:8px}.eyebrow{margin:0;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase}h2{margin:4px 0 0;font-size:18px}.deltas{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-content:center}.deltas span{padding:5px 8px;background:var(--soft);border-radius:5px;color:#243b95;font-weight:650}.frame{margin-top:16px;overflow:hidden;background:#fff;border:1px solid var(--border);border-radius:8px}iframe{display:block;width:100%;height:760px;border:0}.end{display:flex;justify-content:space-between;gap:20px;margin-top:16px}.end p{margin:0;color:var(--muted)}footer{padding-bottom:24px;color:var(--muted);font-size:12px}@media(max-width:700px){.head,.end{display:block}.decision{grid-template-columns:1fr}.deltas{justify-content:flex-start}iframe{height:1120px}}
+  </style>
+</head>
+<body>
+  <header class="head"><div><h1>Done Session 的历史详情</h1><p>用同一 Session、同一批已落库 activities 比较当前空白结果与拟议只读状态。</p></div><span class="tag">说明性评审材料</span></header>
+  <main>
+    <section class="decision"><div><p class="eyebrow">请求决定</p><h2>是否在归档后优先展示历史，并将同步失败表达为可重试状态？</h2></div><div class="deltas"><span>历史不因 Done 隐藏</span><span>归档只读</span><span>失败可诊断</span></div></section>
+    <div class="frame"><iframe src="scenarios/01-archived-history.html" title="归档 Session 历史详情对比"></iframe></div>
+    <section class="end"><p>本材料仅用于说明设计，不是生产 UI 或规范性行为契约。<a href="../Idea.md">查看规范来源</a></p><strong>是否批准这一只读历史反馈方向？</strong></section>
+  </main>
+  <footer>未决：最终标签用 Archived 还是 Done，以及自动重试次数，在实施阶段结合现有文案体系确定。</footer>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>归档 Session 历史详情</title>
+  <style>
+    :root{--surface:#fff;--subtle:#f5f7f9;--ink:#17212b;--muted:#687487;--border:#d8dfe8;--accent:#3454d1;--warn:#a86618}*{box-sizing:border-box}body{margin:0;padding:18px;color:var(--ink);font:14px/1.5 "Segoe UI",sans-serif}.heading{display:flex;justify-content:space-between;gap:16px;margin-bottom:14px}.heading h1{margin:0;font-size:20px}.heading p{margin:4px 0 0;color:var(--muted)}.callouts{display:flex;gap:7px;flex-wrap:wrap;align-content:start}.callouts span{padding:5px 8px;background:#e3e8fb;border-radius:5px;color:#243b95;font-size:12px;font-weight:650}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:16px}.state{overflow:hidden;border:1px solid var(--border);border-radius:8px}.state.after{border-color:#8ca0e1}.label{display:flex;justify-content:space-between;padding:9px 12px;background:var(--subtle);border-bottom:1px solid var(--border)}.label span{color:var(--muted);font-size:12px}.app{min-height:520px;background:#fff}.session-head{padding:18px 20px;border-bottom:1px solid var(--border)}.session-head h2{margin:0;font-size:18px}.meta{display:flex;gap:8px;margin-top:7px;color:var(--muted);font-size:12px}.badge{padding:2px 7px;border-radius:999px;background:#f3eadb;color:#7b4d07}.empty{display:grid;min-height:410px;place-items:center;padding:32px;text-align:center;color:var(--muted)}.empty strong{display:block;color:var(--ink);font-size:16px}.notice{display:flex;justify-content:space-between;gap:12px;margin:14px 20px 0;padding:10px 12px;background:#fff8eb;border:1px solid #ead5ac;border-radius:6px;color:#6b470d}.notice button{border:1px solid #b78a3b;border-radius:5px;background:#fff;padding:5px 9px;color:#6b470d}.events{padding:16px 20px}.event{display:grid;grid-template-columns:82px 1fr;gap:12px;padding:13px 0;border-bottom:1px solid var(--border)}.event:last-child{border:0}.role{color:var(--muted);font-size:12px}.event p{margin:0}.readonly{margin-left:auto;color:var(--muted)}@media(max-width:760px){body{padding:12px}.heading{display:block}.callouts{margin-top:8px}.comparison{grid-template-columns:1fr}.app{min-height:430px}}
+  </style>
+</head>
+<body>
+  <header class="heading"><div><h1>归档后打开详情</h1><p>相同的“Investigate gone sessions”、3 条已落库 activities、connector 离线。</p></div><div class="callouts"><span>先展示持久化历史</span><span>同步失败不等于空历史</span></div></header>
+  <main class="comparison">
+    <section class="state"><header class="label"><strong>当前</strong><span>同一 Session 与数据</span></header><div class="app"><div class="session-head"><h2>Investigate gone sessions</h2><div class="meta"><span>gone</span><span>Connector offline</span></div></div><div class="empty"><div><strong>No activities</strong><p>页面无法说明历史为空、未同步，还是补同步失败。</p></div></div></div></section>
+    <section class="state after"><header class="label"><strong>拟议方向</strong><span>同一 Session 与数据</span></header><div class="app"><div class="session-head"><h2>Investigate gone sessions</h2><div class="meta"><span class="badge">Done · Read only</span><span>Connector offline</span><span class="readonly">Sending disabled</span></div></div><div class="notice"><span>已显示 Relay 保存的历史；最新历史暂时无法同步。</span><button type="button">Retry sync</button></div><div class="events"><div class="event"><span class="role">User</span><p>为什么 Done 后 activities 不见了？</p></div><div class="event"><span class="role">Assistant</span><p>正在追踪 Agent Host、Relay 与 Web 的历史读取链路。</p></div><div class="event"><span class="role">Tool</span><p>History sync failed: session archived in Agent Host.</p></div></div></div></section>
+  </main>
+</body>
+</html>

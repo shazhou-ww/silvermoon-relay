@@ -59,6 +59,15 @@ async function fixture(page: Page, initialEvents = 40) {
       body = [connector("one"), connector("two")]
     } else if (url.pathname.endsWith("/events/sync")) {
       body = { command: { id: "sync", type: "sync", status: "sent" } }
+    } else if (url.pathname === "/api/commands/sync") {
+      body = {
+        id: "sync",
+        connectorId: "one",
+        type: "session.history",
+        sessionId: "session-1",
+        status: "succeeded",
+        error: null,
+      }
     } else if (url.pathname.endsWith("/events")) {
       state.eventPolls++
       const second = url.pathname.includes("/two/")

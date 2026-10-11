@@ -375,7 +375,7 @@ export class ConnectorSession extends DurableObject<Env> {
     outcome: "succeeded" | "failed",
     error?: CommandCompletion["error"],
   ): Promise<void> {
-    await this.env.DB.prepare(
+    const completion = this.env.DB.prepare(
       `UPDATE connector_commands SET status = ?1, error_code = ?2,
         error_message = ?3, completed_at = CURRENT_TIMESTAMP,
         updated_at = CURRENT_TIMESTAMP
@@ -389,8 +389,27 @@ export class ConnectorSession extends DurableObject<Env> {
         commandId,
         attachment.userId,
         attachment.connectorId,
-      )
-      .run();
+      );
+    if (outcome === "failed") {
+      await completion.run();
+      return;
+    }
+    await this.env.DB.batch([
+      completion,
+      this.env.DB.prepare(
+        `UPDATE agent_sessions SET history_synced_at = CURRENT_TIMESTAMP
+         WHERE user_id = ?1 AND connector_id = ?2
+           AND id = (
+             SELECT session_id FROM connector_commands
+             WHERE id = ?3 AND user_id = ?1 AND connector_id = ?2
+               AND type = 'session.history' AND status = 'succeeded'
+           )`,
+      ).bind(
+        attachment.userId,
+        attachment.connectorId,
+        commandId,
+      ),
+    ]);
   }
 
   private async connectionClosed(

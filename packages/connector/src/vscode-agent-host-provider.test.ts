@@ -138,22 +138,64 @@ describe("VS Code Agent Host mapping", () => {
     expect(parent).not.toBeNull();
 
     const subsessions = agentHostSummaryToSubsessions(summary, parent!);
-    expect(subsessions).toEqual([{
-      resource: "ahp-chat:/session-parent/worker",
-      session: {
-        id: expect.stringMatching(/^ahp-chat:[0-9a-f]{64}$/u),
-        parentSessionId: "session-parent",
-        title: "Investigate tests",
-        status: "running",
-        nativeStatus: String(SessionStatus.InProgress),
-        createdAt: "2026-10-10T00:00:00.000Z",
-        updatedAt: "2026-10-10T00:01:00.000Z",
-        lastMessagePreview: null,
-        canSendMessage: false,
+    expect(subsessions).toEqual([
+      {
+        resource: "ahp-chat:/session-parent/worker",
+        session: {
+          id: expect.stringMatching(/^ahp-chat:[0-9a-f]{64}$/u),
+          parentSessionId: "session-parent",
+          title: "Investigate tests",
+          status: "running",
+          nativeStatus: String(SessionStatus.InProgress),
+          createdAt: "2026-10-10T00:00:00.000Z",
+          updatedAt: "2026-10-10T00:01:00.000Z",
+          lastMessagePreview: null,
+          canSendMessage: false,
+        },
       },
-    }]);
+      {
+        resource: "ahp-chat:/session-parent/archived",
+        session: {
+          id: expect.stringMatching(/^ahp-chat:[0-9a-f]{64}$/u),
+          parentSessionId: "session-parent",
+          title: "Archived worker",
+          status: "closed",
+          nativeStatus: String(
+            SessionStatus.Idle | SessionStatus.IsArchived,
+          ),
+          createdAt: "2026-10-10T00:00:00.000Z",
+          updatedAt: "2026-10-10T00:01:00.000Z",
+          lastMessagePreview: null,
+          canSendMessage: false,
+        },
+      },
+    ]);
     expect(agentHostSummaryToSubsessions(summary, parent!)[0].session.id)
       .toBe(subsessions[0].session.id);
+  });
+
+  it("keeps archived parent sessions read-only and addressable", () => {
+    const session = agentHostSummaryToSession({
+      resource: "copilotcli:/session-archived",
+      provider: "copilotcli",
+      title: "Archived work",
+      status: SessionStatus.Idle | SessionStatus.IsArchived,
+      createdAt: "2026-10-10T00:00:00.000Z",
+      modifiedAt: "2026-10-10T00:01:00.000Z",
+      defaultChat: "ahp-chat:/session-archived/default",
+      chats: [{
+        resource: "ahp-chat:/session-archived/default",
+        title: "Default",
+        status: SessionStatus.Idle | SessionStatus.IsArchived,
+      }],
+    });
+
+    expect(session).toMatchObject({
+      id: "session-archived",
+      status: "closed",
+      nativeStatus: String(SessionStatus.Idle | SessionStatus.IsArchived),
+      canSendMessage: false,
+    });
   });
 
   it("treats the first catalog chat as the default when none is designated", () => {

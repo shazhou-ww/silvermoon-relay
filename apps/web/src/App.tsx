@@ -72,6 +72,7 @@ import {
   countSessionStatuses,
   deriveVisibleSessions,
   groupSessionsByDevice,
+  sessionIsArchived,
   sessionKey,
   type OrderedSession,
   type SessionStatusView,
@@ -162,6 +163,15 @@ interface CommandResponse {
   }
 }
 
+interface HistorySyncResponse {
+  command: {
+    id: string
+    type: string
+    status: "queued" | "sent" | "accepted" | "failed"
+  } | null
+  synced?: boolean
+}
+
 interface CommandStatus {
   id: string
   connectorId: string
@@ -178,6 +188,7 @@ interface TrackedCommand {
   id: string
   label: string
   status: CommandStatus["status"]
+  historyRequestKey?: string
 }
 
 interface SessionSelection {
@@ -603,6 +614,11 @@ function App() {
   )
   const [trackedCommand, setTrackedCommand] =
     useState<TrackedCommand | null>(null)
+  const [historySyncFailure, setHistorySyncFailure] = useState<{
+    key: string
+    message: string
+  } | null>(null)
+  const [historySyncAttempt, setHistorySyncAttempt] = useState(0)
   const historyRequests = useRef(new Set<string>())
   const followUpInputRef = useRef<HTMLTextAreaElement>(null)
   const selectedConnectorId = selection?.connectorId ?? null
@@ -829,6 +845,9 @@ function App() {
       ) ?? null,
     [agentSessions, selectedConnectorId, selectedSessionId],
   )
+  const selectedSessionArchived = selectedAgentSession
+    ? sessionIsArchived(selectedAgentSession)
+    : false
   const transcriptItems = useMemo(
     () => buildTranscript(events),
     [events],
@@ -868,14 +887,27 @@ function App() {
     const requestHistory = async () => {
       if (historyRequests.current.has(selectionKey)) return
       historyRequests.current.add(selectionKey)
+      setHistorySyncFailure((current) =>
+        current?.key === selectionKey ? null : current
+      )
       try {
-        await api(
+        const result = await api<HistorySyncResponse>(
           `/api/connectors/${connectorId}/sessions/${sessionId}/events/sync`,
           { method: "POST" },
         )
+        if (active && result.command?.type === "session.history") {
+          setTrackedCommand({
+            id: result.command.id,
+            label: "History sync",
+            status: result.command.status,
+            historyRequestKey: selectionKey,
+          })
+        }
       } catch (caught) {
         historyRequests.current.delete(selectionKey)
-        if (active && caught instanceof Error) setError(caught.message)
+        if (active && caught instanceof Error) {
+          setHistorySyncFailure({ key: selectionKey, message: caught.message })
+        }
       }
     }
     void requestHistory()
@@ -887,6 +919,7 @@ function App() {
     selectedSessionAvailable,
     selectedSessionId,
     selectionKey,
+    historySyncAttempt,
   ])
 
   useEffect(() => {
@@ -1030,6 +1063,7 @@ function App() {
     && selectedAgentSession?.canSendMessage !== false
   const trackedCommandId = trackedCommand?.id ?? null
   const trackedCommandLabel = trackedCommand?.label ?? null
+  const trackedHistoryRequestKey = trackedCommand?.historyRequestKey ?? null
 
   useEffect(() => {
     if (!trackedCommandId || !trackedCommandLabel) return
@@ -1045,18 +1079,30 @@ function App() {
           if (timer !== undefined) window.clearInterval(timer)
           setTrackedCommand(null)
           setNotice(`${trackedCommandLabel} completed.`)
+          if (trackedHistoryRequestKey) {
+            setHistorySyncFailure((current) =>
+              current?.key === trackedHistoryRequestKey ? null : current
+            )
+          }
           setError(null)
           return
         }
         if (result.status === "failed") {
           if (timer !== undefined) window.clearInterval(timer)
           setTrackedCommand(null)
-          setNotice(null)
-          setError(
-            result.error?.message
+          const message = result.error?.message
             || result.error?.code
-            || `${trackedCommandLabel} failed.`,
-          )
+            || `${trackedCommandLabel} failed.`
+          setNotice(null)
+          if (trackedHistoryRequestKey) {
+            historyRequests.current.delete(trackedHistoryRequestKey)
+            setHistorySyncFailure({
+              key: trackedHistoryRequestKey,
+              message,
+            })
+          } else {
+            setError(message)
+          }
           return
         }
         setTrackedCommand((current) =>
@@ -1074,7 +1120,7 @@ function App() {
       active = false
       if (timer !== undefined) window.clearInterval(timer)
     }
-  }, [trackedCommandId, trackedCommandLabel])
+  }, [trackedCommandId, trackedCommandLabel, trackedHistoryRequestKey])
 
   function openNewSession() {
     const preferred =
@@ -1707,12 +1753,8 @@ function App() {
             )}
 
             {deviceGroupingEnabled
-              ? sessionDeviceGroups.map((group, groupIndex) => {
+              ? sessionDeviceGroups.map((group) => {
                   const expanded = expandedDeviceIds.has(group.source.id)
-                    || (
-                      expandedDeviceIds.size === 0
-                      && groupIndex === 0
-                    )
                   const groupCounts = countSessionStatuses(
                     group.sessions.map((item) => item.session),
                   )
@@ -1823,6 +1865,36 @@ function App() {
                           </button>
                         )}
                       </div>
+
+                      {selectedSessionArchived && (
+                        <div className="history-state-notice" role="status">
+                          <strong>This Session is archived and read-only.</strong>
+                          <span>Its saved activity remains available.</span>
+                        </div>
+                      )}
+
+                      {historySyncFailure?.key === selectionKey && (
+                        <div
+                          className="history-state-notice is-error"
+                          role="alert"
+                        >
+                          <CircleAlert aria-hidden="true" />
+                          <span>
+                            <strong>History sync failed.</strong>
+                            {historySyncFailure.message}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              historyRequests.current.delete(selectionKey)
+                              setHistorySyncFailure(null)
+                              setHistorySyncAttempt((attempt) => attempt + 1)
+                            }}
+                          >
+                            Retry sync
+                          </button>
+                        </div>
+                      )}
 
                       {events.length === 0 && (
                         <div className="transcript-empty" role="status">
