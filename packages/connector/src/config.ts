@@ -85,6 +85,7 @@ export async function assertSecureProfile(
   path: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<void> {
+  const metadata = await stat(path);
   if (platform === "win32") {
     const acl = await windowsAcl(path);
     if (
@@ -97,7 +98,6 @@ export async function assertSecureProfile(
     }
     return;
   }
-  const metadata = await stat(path);
   if ((metadata.mode & 0o077) !== 0) {
     throw new Error(
       `Refusing to read ${path}: permissions must be 0600.`,

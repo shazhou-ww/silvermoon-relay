@@ -6,6 +6,19 @@ import { parseCliOptions, resolveCliOptions } from "./cli.js";
 import { writeProfile } from "./config.js";
 
 describe("connector CLI configuration", () => {
+  it("allows direct configuration before a profile exists", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "silvermoon-cli-"));
+    const profilePath = join(directory, "missing", "connector.yaml");
+    const parsed = parseCliOptions(["--config", profilePath]);
+    if ("help" in parsed) throw new Error("Unexpected help result.");
+    await expect(resolveCliOptions(parsed, {
+      SILVERMOON_CONNECTION_TOKEN: "environment-token",
+    })).resolves.toMatchObject({
+      token: "environment-token",
+      profilePath,
+    });
+  });
+
   it("uses direct token, explicit options, and environment before profile", async () => {
     const directory = await mkdtemp(join(tmpdir(), "silvermoon-cli-"));
     const profilePath = join(directory, "connector.yaml");
