@@ -7,8 +7,6 @@ import type { AgentAdapter, AgentAdapterEvent } from "./adapter.js";
 export interface SilvermoonConnectorOptions {
   relayUrl: string;
   token: string;
-  connectorId: string;
-  displayName: string;
   adapter: AgentAdapter;
   heartbeatMs?: number;
   eventBufferLimit?: number;
@@ -19,14 +17,14 @@ type ConnectorClient = ReturnType<typeof createTRPCClient<ConnectorRouter>>;
 type ConnectorWsClient = ReturnType<typeof createWSClient>;
 const HISTORY_EVENT_BATCH_SIZE = 50;
 
-function connectorSocketUrl(relayUrl: string, connectorId: string): string {
+function connectorSocketUrl(relayUrl: string): string {
   const url = new URL(relayUrl);
   if (url.protocol === "https:") url.protocol = "wss:";
   else if (url.protocol === "http:") url.protocol = "ws:";
   if (url.protocol !== "wss:" && url.protocol !== "ws:") {
     throw new Error("Relay URL must use http, https, ws, or wss.");
   }
-  url.pathname = `/v1/connectors/${encodeURIComponent(connectorId)}/connect`;
+  url.pathname = "/v1/connect";
   url.search = "";
   url.hash = "";
   return url.toString();
@@ -34,14 +32,12 @@ function connectorSocketUrl(relayUrl: string, connectorId: string): string {
 
 function authenticatedWebSocket(
   token: string,
-  connectorId: string,
 ): typeof globalThis.WebSocket {
   class AuthenticatedWebSocket extends WebSocket {
     constructor(address: string | URL, protocols?: string | string[]) {
       super(address, protocols ?? [], {
         headers: {
           Authorization: `Bearer ${token}`,
-          "X-Silvermoon-Connector-Id": connectorId,
         },
       });
     }
@@ -82,14 +78,8 @@ export class SilvermoonConnector {
     });
 
     this.wsClient = createWSClient({
-      url: connectorSocketUrl(
-        this.options.relayUrl,
-        this.options.connectorId,
-      ),
-      WebSocket: authenticatedWebSocket(
-        this.options.token,
-        this.options.connectorId,
-      ),
+      url: connectorSocketUrl(this.options.relayUrl),
+      WebSocket: authenticatedWebSocket(this.options.token),
       keepAlive: {
         enabled: true,
         intervalMs: 20_000,
@@ -149,8 +139,6 @@ export class SilvermoonConnector {
     const generation = this.connectionGeneration;
     try {
       const welcome = await client.register.mutate({
-        connectorId: this.options.connectorId,
-        displayName: this.options.displayName,
         agent: this.options.adapter.agent,
         capabilities: this.options.adapter.capabilities,
       });

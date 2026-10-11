@@ -1,58 +1,72 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseCliOptions } from "./cli.js";
+import { parseCliOptions, resolveCliOptions } from "./cli.js";
+import { writeProfile } from "./config.js";
 
-describe("parseCliOptions", () => {
-  it("uses explicit arguments over environment defaults", () => {
-    expect(parseCliOptions([
-      "--id",
-      "studio-laptop",
+describe("connector CLI configuration", () => {
+  it("uses direct token, explicit options, and environment before profile", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "silvermoon-cli-"));
+    const profilePath = join(directory, "connector.yaml");
+    await writeProfile({
+      version: 1,
+      relay: "https://profile.example.com",
+      token: "profile-token",
+      options: { model: "profile-model" },
+    }, profilePath);
+    const parsed = parseCliOptions([
+      "--config",
+      profilePath,
       "--relay",
-      "https://relay.example.com",
-      "--display-name",
-      "Studio laptop",
+      "https://argument.example.com",
+      "--model",
+      "argument-model",
       "--approve-all",
-    ], {
-      SILVERMOON_CONNECTOR_ID: "environment-device",
-      SILVERMOON_RELAY_URL: "https://ignored.example.com",
-    })).toEqual({
-      connectorId: "studio-laptop",
-      relayUrl: "https://relay.example.com",
-      displayName: "Studio laptop",
-      tokenFile: undefined,
-      workingDirectory: undefined,
-      copilotHome: undefined,
-      vscodeUserDataDirectory: undefined,
-      model: undefined,
+    ]);
+    if ("help" in parsed) throw new Error("Unexpected help result.");
+    await expect(resolveCliOptions(parsed, {
+      SILVERMOON_CONNECTION_TOKEN: "environment-token",
+      SILVERMOON_RELAY_URL: "https://environment.example.com",
+    })).resolves.toMatchObject({
+      relayUrl: "https://argument.example.com",
+      token: "environment-token",
+      model: "argument-model",
       approveAllPermissions: true,
     });
   });
 
-  it("supports environment configuration", () => {
-    expect(parseCliOptions([], {
-      SILVERMOON_CONNECTOR_ID: "desktop:copilot",
-      SILVERMOON_RELAY_URL: "http://localhost:8787",
-      SILVERMOON_CONNECTION_TOKEN_FILE: "C:\\secrets\\relay-token",
-      SILVERMOON_COPILOT_HOME: "C:\\copilot",
-      SILVERMOON_COPILOT_MODEL: "gpt-5",
-      SILVERMOON_VSCODE_USER_DATA_DIR: "C:\\vscode-data",
-    })).toMatchObject({
-      connectorId: "desktop:copilot",
-      relayUrl: "http://localhost:8787",
-      tokenFile: "C:\\secrets\\relay-token",
-      copilotHome: "C:\\copilot",
-      vscodeUserDataDirectory: "C:\\vscode-data",
-      model: "gpt-5",
-      approveAllPermissions: false,
+  it("uses an explicit token file before profile", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "silvermoon-cli-"));
+    const profilePath = join(directory, "connector.yaml");
+    const tokenPath = join(directory, "token");
+    await writeFile(tokenPath, "file-token\n", { mode: 0o600 });
+    await writeProfile({
+      version: 1,
+      relay: "https://profile.example.com",
+      token: "profile-token",
+    }, profilePath);
+    const parsed = parseCliOptions([
+      "--config",
+      profilePath,
+      "--token-file",
+      tokenPath,
+    ]);
+    if ("help" in parsed) throw new Error("Unexpected help result.");
+    await expect(resolveCliOptions(parsed, {})).resolves.toMatchObject({
+      relayUrl: "https://profile.example.com",
+      token: "file-token",
     });
   });
 
-  it("rejects missing, malformed, and unknown options", () => {
-    expect(() => parseCliOptions([], {})).toThrow("--id is required.");
-    expect(() => parseCliOptions(["--id", "invalid id"], {})).toThrow(
-      "--id must start",
+  it("rejects legacy identity settings", async () => {
+    expect(() => parseCliOptions(["--id", "studio-laptop"])).toThrow(
+      "device identity is managed by Relay",
     );
-    expect(() => parseCliOptions(["--wat"], {})).toThrow(
-      "Unknown option: --wat",
-    );
+    const parsed = parseCliOptions([]);
+    if ("help" in parsed) throw new Error("Unexpected help result.");
+    await expect(resolveCliOptions(parsed, {
+      SILVERMOON_CONNECTOR_ID: "legacy",
+    })).rejects.toThrow("SILVERMOON_CONNECTOR_ID is no longer supported");
   });
 });

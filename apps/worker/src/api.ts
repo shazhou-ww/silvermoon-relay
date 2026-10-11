@@ -84,17 +84,14 @@ async function notifyTokenRevocation(
   userId: string,
   tokenId: string,
 ): Promise<void> {
-  const connectors = await env.DB.prepare(
-    `SELECT id FROM connectors
-     WHERE user_id = ?1 AND connection_token_id = ?2`,
+  const token = await env.DB.prepare(
+    `SELECT device_id FROM connection_tokens
+     WHERE user_id = ?1 AND id = ?2`,
   )
     .bind(userId, tokenId)
-    .all<{ id: string }>();
-  await Promise.all(
-    connectors.results.map(({ id }) =>
-      env.DAEMON_SESSIONS.getByName(`${userId}:${id}`).revokeToken(tokenId)
-    ),
-  );
+    .first<{ device_id: string }>();
+  if (!token) return;
+  await env.DAEMON_SESSIONS.getByName(tokenId).revokeToken(tokenId);
 }
 
 function pathValue(value: string): string | null {
@@ -141,7 +138,13 @@ async function dispatchCommand(
     .run();
 
   const result = await env.DAEMON_SESSIONS
-    .getByName(`${userId}:${connectorId}`)
+    .getByName(
+      await env.DB.prepare(
+        `SELECT connection_token_id FROM connectors
+         WHERE user_id = ?1 AND id = ?2`,
+      ).bind(userId, connectorId).first<string>("connection_token_id")
+        ?? `${userId}:${connectorId}`,
+    )
     .dispatchCommand(command);
   if (result.delivered) return true;
 

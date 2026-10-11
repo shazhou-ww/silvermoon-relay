@@ -35,15 +35,30 @@ runtime dependencies for consumers.
 
 ## Run
 
-After installing the package, provide a stable device ID and a relay token:
+In the Relay Web UI, choose **Add device**, name the device once, and copy the
+generated profile to `$HOME/.silvermoon/connector.yaml`. The connector reads
+the Relay address, token, and non-sensitive options from that file:
+
+```powershell
+silvermoon-connector
+```
+
+The connector refuses to read a profile that is accessible by another
+operating-system identity. Profile updates made with `--write-config` use an
+atomic same-directory replacement, mode `0600` on POSIX, and a protected ACL
+for only the current user on Windows:
 
 ```powershell
 $env:SILVERMOON_CONNECTION_TOKEN = "smr1_..."
-silvermoon-connector `
-  --id studio-laptop `
-  --display-name "Studio laptop" `
-  --working-directory D:\Code\my-project
+silvermoon-connector --relay https://relay.silvermoon.work --write-config
 ```
+
+Resolution order for the token is `SILVERMOON_CONNECTION_TOKEN`, an explicit
+`--token-file` or `SILVERMOON_CONNECTION_TOKEN_FILE`, then the profile. CLI
+options and the existing Relay/Copilot environment variables override profile
+values. `--id`, `--display-name`, and `SILVERMOON_CONNECTOR_ID` are no longer
+accepted because Relay derives the stable device identity and name from the
+token.
 
 For a checkout of this monorepo:
 
@@ -52,9 +67,8 @@ pnpm --filter @silvermoon-ai/connector build
 node .\packages\connector\dist\cli.js --help
 ```
 
-Use `--token-file` instead of the environment variable when a protected
-credential file is more appropriate. Relay tokens are sent only in the
-WebSocket `Authorization` header and are never printed.
+Relay tokens are sent only in the WebSocket `Authorization` header and are
+never printed or included in connector logs.
 
 The SDK uses the local GitHub Copilot authentication available to the user.
 `--approve-all` allows remotely initiated sessions to approve every Copilot

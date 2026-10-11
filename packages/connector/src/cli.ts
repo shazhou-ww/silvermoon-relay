@@ -1,21 +1,37 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
-import { hostname } from "node:os";
 import { pathToFileURL } from "node:url";
-import { connectorIdSchema } from "@silvermoon-ai/protocol";
 import { CopilotAgentAdapter } from "./copilot-adapter.js";
+import {
+  defaultProfilePath,
+  readProfile,
+  writeProfile,
+  type ConnectorProfile,
+} from "./config.js";
 import { SilvermoonConnector } from "./connector.js";
 
-export interface CliOptions {
-  connectorId: string;
-  relayUrl: string;
-  displayName: string;
+interface ParsedCliOptions {
+  relayUrl?: string;
   tokenFile?: string;
+  profilePath: string;
+  workingDirectory?: string;
+  copilotHome?: string;
+  vscodeUserDataDirectory?: string;
+  model?: string;
+  approveAllPermissions?: boolean;
+  writeConfig: boolean;
+}
+
+export interface CliOptions {
+  relayUrl: string;
+  token: string;
+  profilePath: string;
   workingDirectory?: string;
   copilotHome?: string;
   vscodeUserDataDirectory?: string;
   model?: string;
   approveAllPermissions: boolean;
+  writeConfig: boolean;
 }
 
 export const HELP = `silvermoon-connector
@@ -23,15 +39,13 @@ export const HELP = `silvermoon-connector
 Expose local GitHub Copilot sessions through Silvermoon Relay.
 
 Usage:
-  silvermoon-connector --id <device-id> [options]
-
-Required:
-  --id <id>                    Stable ID for this device connector
+  silvermoon-connector [options]
 
 Options:
   --relay <url>                Relay origin
-  --display-name <name>        Device name shown in the dashboard
   --token-file <path>          Read the relay connection token from a file
+  --config <path>              Connector profile (default: ~/.silvermoon/connector.yaml)
+  --write-config               Atomically save the resolved settings and exit
   --working-directory <path>   Default working directory for Copilot sessions
   --copilot-home <path>        Override Copilot session/config storage
   --vscode-user-data-dir <path>
@@ -43,17 +57,17 @@ Options:
 Environment:
   SILVERMOON_CONNECTION_TOKEN
   SILVERMOON_CONNECTION_TOKEN_FILE
-  SILVERMOON_CONNECTOR_ID
   SILVERMOON_RELAY_URL
   SILVERMOON_COPILOT_HOME
   SILVERMOON_COPILOT_MODEL
   SILVERMOON_VSCODE_USER_DATA_DIR
 
-The connector uses the locally authenticated GitHub Copilot SDK runtime and
-discovers live VS Code Agent Host sessions from the current user's local
-endpoint registry. Relay and Agent Host tokens are never printed. --approve-all
-enables remote tool side effects; omit it unless this connector runs in a
-trusted environment.
+Token priority is SILVERMOON_CONNECTION_TOKEN, an explicit token file, then
+the profile. Explicit options and environment variables override profile
+settings. Device identity and display name are managed by Relay from the token;
+legacy --id, --display-name, and SILVERMOON_CONNECTOR_ID are not accepted.
+Relay and Agent Host tokens are never printed. --approve-all enables remote
+tool side effects; omit it unless this connector runs in a trusted environment.
 `;
 
 function takeValue(args: string[], index: number, option: string): string {
@@ -66,22 +80,30 @@ function takeValue(args: string[], index: number, option: string): string {
 
 export function parseCliOptions(
   argv: string[],
-  environment: NodeJS.ProcessEnv = process.env,
-): CliOptions | { help: true } {
+): ParsedCliOptions | { help: true } {
   if (argv.includes("--help") || argv.includes("-h")) return { help: true };
   const values = new Map<string, string>();
-  let approveAllPermissions = false;
+  let approveAllPermissions: boolean | undefined;
+  let writeConfig = false;
   for (let index = 0; index < argv.length; index += 1) {
     const option = argv[index];
     if (option === "--approve-all") {
       approveAllPermissions = true;
       continue;
     }
+    if (option === "--write-config") {
+      writeConfig = true;
+      continue;
+    }
+    if (option === "--id" || option === "--display-name") {
+      throw new Error(
+        `${option} is no longer supported; device identity is managed by Relay from the token.`,
+      );
+    }
     if (![
-      "--id",
       "--relay",
-      "--display-name",
       "--token-file",
+      "--config",
       "--working-directory",
       "--copilot-home",
       "--vscode-user-data-dir",
@@ -92,49 +114,88 @@ export function parseCliOptions(
     values.set(option, takeValue(argv, index, option));
     index += 1;
   }
-
-  const connectorId = values.get("--id")
-    ?? environment.SILVERMOON_CONNECTOR_ID;
-  if (!connectorId) throw new Error("--id is required.");
-  const parsedConnectorId = connectorIdSchema.safeParse(connectorId);
-  if (!parsedConnectorId.success) {
-    throw new Error(
-      "--id must start with a letter or number and contain only letters, numbers, '.', '_', ':', or '-'.",
-    );
-  }
   return {
-    connectorId: parsedConnectorId.data,
-    relayUrl: values.get("--relay")
-      ?? environment.SILVERMOON_RELAY_URL
-      ?? "https://relay.silvermoon.work",
-    displayName: values.get("--display-name") ?? hostname(),
-    tokenFile: values.get("--token-file")
-      ?? environment.SILVERMOON_CONNECTION_TOKEN_FILE,
+    relayUrl: values.get("--relay"),
+    tokenFile: values.get("--token-file"),
+    profilePath: values.get("--config") ?? defaultProfilePath(),
     workingDirectory: values.get("--working-directory"),
-    copilotHome: values.get("--copilot-home")
-      ?? environment.SILVERMOON_COPILOT_HOME,
-    vscodeUserDataDirectory: values.get("--vscode-user-data-dir")
-      ?? environment.SILVERMOON_VSCODE_USER_DATA_DIR,
-    model: values.get("--model")
-      ?? environment.SILVERMOON_COPILOT_MODEL,
+    copilotHome: values.get("--copilot-home"),
+    vscodeUserDataDirectory: values.get("--vscode-user-data-dir"),
+    model: values.get("--model"),
     approveAllPermissions,
+    writeConfig,
   };
 }
 
-async function readToken(
-  options: CliOptions,
-  environment: NodeJS.ProcessEnv,
-): Promise<string> {
-  const direct = environment.SILVERMOON_CONNECTION_TOKEN?.trim();
-  if (direct) return direct;
-  if (!options.tokenFile) {
-    throw new Error(
-      "Set SILVERMOON_CONNECTION_TOKEN or provide --token-file.",
-    );
-  }
-  const token = (await readFile(options.tokenFile, "utf8")).trim();
+async function tokenFromFile(path: string): Promise<string> {
+  const token = (await readFile(path, "utf8")).trim();
   if (!token) throw new Error("Connection token file is empty.");
   return token;
+}
+
+export async function resolveCliOptions(
+  parsed: ParsedCliOptions,
+  environment: NodeJS.ProcessEnv = process.env,
+): Promise<CliOptions> {
+  if (environment.SILVERMOON_CONNECTOR_ID) {
+    throw new Error(
+      "SILVERMOON_CONNECTOR_ID is no longer supported; device identity is managed by Relay from the token.",
+    );
+  }
+  const profile = await readProfile(parsed.profilePath);
+  const tokenFile = parsed.tokenFile
+    ?? environment.SILVERMOON_CONNECTION_TOKEN_FILE;
+  const token = environment.SILVERMOON_CONNECTION_TOKEN?.trim()
+    || (tokenFile ? await tokenFromFile(tokenFile) : profile?.token);
+  if (!token) {
+    throw new Error(
+      "Set SILVERMOON_CONNECTION_TOKEN, provide --token-file, or configure ~/.silvermoon/connector.yaml.",
+    );
+  }
+  return {
+    relayUrl: parsed.relayUrl
+      ?? environment.SILVERMOON_RELAY_URL
+      ?? profile?.relay
+      ?? "https://relay.silvermoon.work",
+    token,
+    profilePath: parsed.profilePath,
+    workingDirectory: parsed.workingDirectory
+      ?? profile?.options?.workingDirectory,
+    copilotHome: parsed.copilotHome
+      ?? environment.SILVERMOON_COPILOT_HOME
+      ?? profile?.options?.copilotHome,
+    vscodeUserDataDirectory: parsed.vscodeUserDataDirectory
+      ?? environment.SILVERMOON_VSCODE_USER_DATA_DIR
+      ?? profile?.options?.vscodeUserDataDirectory,
+    model: parsed.model
+      ?? environment.SILVERMOON_COPILOT_MODEL
+      ?? profile?.options?.model,
+    approveAllPermissions: parsed.approveAllPermissions
+      ?? profile?.options?.approveAllPermissions
+      ?? false,
+    writeConfig: parsed.writeConfig,
+  };
+}
+
+function profileFromOptions(options: CliOptions): ConnectorProfile {
+  return {
+    version: 1,
+    relay: options.relayUrl,
+    token: options.token,
+    options: {
+      ...(options.workingDirectory
+        ? { workingDirectory: options.workingDirectory }
+        : {}),
+      ...(options.copilotHome ? { copilotHome: options.copilotHome } : {}),
+      ...(options.vscodeUserDataDirectory
+        ? { vscodeUserDataDirectory: options.vscodeUserDataDirectory }
+        : {}),
+      ...(options.model ? { model: options.model } : {}),
+      ...(options.approveAllPermissions
+        ? { approveAllPermissions: true }
+        : {}),
+    },
+  };
 }
 
 async function main(): Promise<void> {
@@ -143,20 +204,23 @@ async function main(): Promise<void> {
     process.stdout.write(HELP);
     return;
   }
-  const token = await readToken(parsed, process.env);
+  const options = await resolveCliOptions(parsed, process.env);
+  if (options.writeConfig) {
+    await writeProfile(profileFromOptions(options), options.profilePath);
+    process.stdout.write(`Saved connector profile to ${options.profilePath}.\n`);
+    return;
+  }
   const adapter = new CopilotAgentAdapter({
-    workingDirectory: parsed.workingDirectory,
-    baseDirectory: parsed.copilotHome,
-    vscodeUserDataDirectory: parsed.vscodeUserDataDirectory,
-    model: parsed.model,
-    approveAllPermissions: parsed.approveAllPermissions,
+    workingDirectory: options.workingDirectory,
+    baseDirectory: options.copilotHome,
+    vscodeUserDataDirectory: options.vscodeUserDataDirectory,
+    model: options.model,
+    approveAllPermissions: options.approveAllPermissions,
     log: (message) => process.stderr.write(`${message}\n`),
   });
   const connector = new SilvermoonConnector({
-    relayUrl: parsed.relayUrl,
-    token,
-    connectorId: parsed.connectorId,
-    displayName: parsed.displayName,
+    relayUrl: options.relayUrl,
+    token: options.token,
     adapter,
     log: (message) => process.stderr.write(`${message}\n`),
   });

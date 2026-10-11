@@ -92,7 +92,8 @@ interface Account {
 
 interface ConnectionToken {
   id: string
-  label: string
+  deviceId: string
+  deviceName: string
   tokenHint: string
   createdAt: string
   expiresAt: string | null
@@ -546,7 +547,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
-  const [label, setLabel] = useState("My connector")
+  const [deviceName, setDeviceName] = useState("My device")
   const [expiresInDays, setExpiresInDays] = useState("90")
   const [revealedToken, setRevealedToken] = useState<string | null>(null)
   const [sessionTitle, setSessionTitle] = useState("")
@@ -1082,12 +1083,14 @@ function App() {
         {
           method: "POST",
           body: JSON.stringify({
-            label,
+            name: deviceName,
             expiresInDays: expiresInDays ? Number(expiresInDays) : null,
           }),
         },
       )
-      setRevealedToken(result.token)
+      setRevealedToken(
+        `version: 1\nrelay: ${relayOrigin}\ntoken: ${result.token}\n`,
+      )
       await refresh()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Token creation failed")
@@ -1115,7 +1118,9 @@ function App() {
         `/api/tokens/${id}/rotate`,
         { method: "POST" },
       )
-      setRevealedToken(result.token)
+      setRevealedToken(
+        `version: 1\nrelay: ${relayOrigin}\ntoken: ${result.token}\n`,
+      )
       await refresh()
     } catch (caught) {
       setError(
@@ -1886,10 +1891,10 @@ function App() {
               <CardContent className="grid gap-5">
                 <div className="token-create-grid">
                   <label className="field-stack">
-                    <span>Label</span>
+                    <span>Device name</span>
                     <Input
-                      value={label}
-                      onChange={(event) => setLabel(event.target.value)}
+                      value={deviceName}
+                      onChange={(event) => setDeviceName(event.target.value)}
                     />
                   </label>
                   <label className="field-stack">
@@ -1904,7 +1909,7 @@ function App() {
                   <Button
                     type="button"
                     onClick={() => void createConnectionToken()}
-                    disabled={busyAction === "create-token" || !label.trim()}
+                    disabled={busyAction === "create-token" || !deviceName.trim()}
                   >
                     {busyAction === "create-token"
                       ? (
@@ -1914,15 +1919,18 @@ function App() {
                           />
                         )
                       : <Plus aria-hidden="true" />}
-                    Create token
+                    Add device
                   </Button>
                 </div>
 
                 {revealedToken && (
                   <div className="token-reveal">
                     <div>
-                      <strong>Copy this token now</strong>
-                      <span>It will not be shown again after you close it.</span>
+                      <strong>Copy this connector profile now</strong>
+                      <span>
+                        Save it as ~/.silvermoon/connector.yaml. The token will
+                        not be shown again after you close it.
+                      </span>
                     </div>
                     <code>{revealedToken}</code>
                     <div className="token-reveal-actions">
@@ -1932,7 +1940,7 @@ function App() {
                         onClick={() => void copyRevealedToken()}
                       >
                         <Copy aria-hidden="true" />
-                        Copy
+                        Copy profile
                       </Button>
                       <Button
                         type="button"
@@ -1957,7 +1965,7 @@ function App() {
                     .map((token) => (
                       <div className="settings-list-row" key={token.id}>
                         <div>
-                          <strong>{token.label}</strong>
+                          <strong>{token.deviceName}</strong>
                           <span>
                             {token.tokenHint} · Last used{" "}
                             {formatTime(token.lastUsedAt)}

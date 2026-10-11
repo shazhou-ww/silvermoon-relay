@@ -4,6 +4,8 @@ import type { AppEnv } from "./env";
 interface ConnectionTokenRow {
   id: string;
   user_id: string;
+  device_id: string;
+  display_name: string;
   secret_hash: string;
   expires_at: string | null;
   revoked_at: string | null;
@@ -12,6 +14,8 @@ interface ConnectionTokenRow {
 export interface AuthenticatedConnection {
   userId: string;
   tokenId: string;
+  deviceId: string;
+  displayName: string;
 }
 
 function parseConnectionToken(
@@ -52,8 +56,12 @@ export async function authenticateConnectionToken(
   if (!parsed) return null;
 
   const row = await env.DB.prepare(
-    `SELECT id, user_id, secret_hash, expires_at, revoked_at
-     FROM connection_tokens WHERE id = ?1`,
+    `SELECT token.id, token.user_id, token.device_id, device.display_name,
+      token.secret_hash, token.expires_at, token.revoked_at
+     FROM connection_tokens AS token
+     JOIN devices AS device
+       ON device.user_id = token.user_id AND device.id = token.device_id
+     WHERE token.id = ?1`,
   )
     .bind(parsed.id)
     .first<ConnectionTokenRow>();
@@ -87,5 +95,10 @@ export async function authenticateConnectionToken(
     .run();
   if (context) context.waitUntil(update);
   else await update;
-  return { userId: row.user_id, tokenId: row.id };
+  return {
+    userId: row.user_id,
+    tokenId: row.id,
+    deviceId: row.device_id,
+    displayName: row.display_name,
+  };
 }

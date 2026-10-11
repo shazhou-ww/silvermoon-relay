@@ -2,7 +2,6 @@ import {
   agentSessionEventSchema,
   agentSessionSchema,
   connectorCapabilitiesSchema,
-  connectorIdSchema,
   requestIdSchema,
   type AgentSession,
   type AgentSessionEvent,
@@ -15,8 +14,6 @@ import { initTRPC } from "@trpc/server";
 import { z } from "zod";
 
 export const connectorRegistrationSchema = z.object({
-  connectorId: connectorIdSchema,
-  displayName: z.string().trim().min(1).max(128),
   agent: z.object({
     name: z.string().trim().min(1).max(128),
     version: z.string().trim().min(1).max(64).optional(),
