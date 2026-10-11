@@ -23,14 +23,20 @@
 - 真实 Chromium 分别打开生产站点的 1440×900 桌面和 320×640 窄屏视口：登录页面无横向溢出，无 pageerror，三个身份提供方入口均可见并指向生产 Relay。
 - 生产浏览器调用 `/api/me` 均返回 HTTP 401 `authentication-required`。不带 Origin 的命令行请求返回 HTTP 403 `origin-not-allowed`，与浏览器的未认证结果分别记录，不尝试绕过认证或 Origin 限制。
 
-## D-S02 / D-AC01 / D-AC02：等待真实登录后的人工 smoke
+2026-10-11T02:14:04.256Z（北京时间 10:14:04）重新执行外部检查：
 
-受控浏览器没有生产登录态。本轮未输入用户凭据、未读取其他浏览器的登录数据、未使用模拟 relay API 作为生产交互证明，因此不能确认真实生产长 Session 的以下结果：
+- `https://relay.silvermoon.work/health` 与 `https://silvermoon.work/` 均返回 HTTP 200；生产首页仍引用 `/assets/index-BWvhg8t_.js` 和 `/assets/index-yu8RfmFz.css`，两项资源均返回 HTTP 200。
+- 生产 JavaScript 仍包含 `Jump to latest`、`Session messages` 和 `prefers-reduced-motion`，CSS 仍包含 `transcript-shell` 与 `transcript-jump`。
+- 不可变 Pages deployment `https://dbeff6be.silvermoon-work.pages.dev/` 返回 HTTP 200。
+- `origin/release` 仍指向部署提交 `1853a6dc3387a9cafd58fc28fff1781c8485664c`；该提交、当前 `origin/main` 与生产部署之间的 `apps/web` 内容没有差异。
 
-1. 在已登录的 `https://silvermoon.work/` 选择包含足够历史消息的 Session；打开及切换后直接显示最新可见消息。
-2. 停留在底部时，正常新增事件保持可见。
-3. 向上阅读历史后出现 `Jump to latest`，新事件到达时不把阅读位置拉回底部。
-4. 点击或用 Tab/Enter 激活控件后回到底部，控件隐藏，消息和输入区没有遮挡；减少动态效果模式下即时返回。
-5. 在桌面和窄屏分别重复上述检查，记录验证时间和结果；无需提供 Session 正文、凭据或其他敏感内容。
+## D-S02 / D-AC01 / D-AC02：真实登录后的生产 smoke
 
-现阶段只勾选 D-S01。其他部署清单项保持未完成，没有记录 `submitOuter` 或请求 Deployment 验收。实现阶段的本地/CI 浏览器回归不替代本段要求的生产人工观察。
+2026-10-11T02:15:25.830Z（北京时间 10:15:25），用户在默认浏览器自行完成生产 OAuth 登录；验证过程没有向 Agent 提供凭据、认证状态或 Session 正文。用户选择一条具有足够历史记录的生产 Session，并报告桌面和约 320px 窄屏的以下检查全部通过：
+
+1. 打开长 Session 时直接位于最新可见消息；停留在底部时，新增事件保持可见。
+2. 向上阅读历史后显示 `Jump to latest`；新增事件到达时没有把阅读位置拉回底部。
+3. 鼠标点击及 Tab/Enter 激活控件后均回到底部，控件隐藏，消息区和输入区没有遮挡。
+4. 桌面和约 320px 窄屏均通过初始定位、历史阅读保护和返回最新消息操作。
+
+上述生产观察完成 D-S02，并为 D-AC01 与 D-AC02 提供带时间的外部证据；实现阶段的本地/CI 浏览器回归仅作为发布前补充，不替代本次生产人工观察。
