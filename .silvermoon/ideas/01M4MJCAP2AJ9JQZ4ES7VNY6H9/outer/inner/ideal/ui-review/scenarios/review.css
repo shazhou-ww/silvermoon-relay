@@ -71,10 +71,13 @@ h1 { margin:0; font-size:20px; line-height:1.3; }
 .check { color:var(--primary); font-weight:800; }
 .device-group + .device-group { margin-top:8px; }
 .device-group-header { display:flex; min-height:32px; align-items:center; gap:7px; padding:7px 13px 5px; color:var(--muted); font-size:10px; font-weight:700; letter-spacing:.01em; }
-.device-group-header .online-pin { width:6px; height:6px; flex:0 0 auto; background:var(--online); border-radius:50%; }
-.device-group-header .offline-pin { width:6px; height:6px; flex:0 0 auto; background:#98a3b2; border-radius:50%; }
+.device-toggle { display:grid; width:18px; height:18px; flex:0 0 auto; padding:0; place-items:center; color:var(--muted); background:transparent; border:0; border-radius:5px; }
+.device-toggle:hover { background:#e8ecf1; }
+.device-toggle svg { display:block; width:12px; height:12px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .device-group-header strong { min-width:0; overflow:hidden; color:var(--ink); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
-.device-group-header .device-state { margin-left:auto; font-weight:500; }
+.device-group-header .device-state { margin-left:auto; font-weight:700; }
+.device-group-header .device-state[data-status="online"] { color:var(--online); }
+.device-group-header .device-state[data-status="offline"] { color:#7a8594; }
 .device-group .meta .device-name { display:none; }
 .footer { display:flex; justify-content:space-between; padding:10px 13px; color:var(--muted); background:#f3f5f7; border-top:1px solid var(--border); font-size:10px; }
 @media (max-width:760px) { body{padding:12px}.scenario-heading,.comparison{grid-template-columns:1fr}.callouts{justify-content:flex-start}.product-surface{min-height:520px;padding:14px} }
