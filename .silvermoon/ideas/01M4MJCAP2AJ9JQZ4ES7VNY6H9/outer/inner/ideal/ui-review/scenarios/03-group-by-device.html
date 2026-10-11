@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>按设备分组</title>
+  <link rel="stylesheet" href="review.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div><h1>按设备分组</h1><p>相同的 5 个 Session，比较统一时间流与启用 Group by Device 后的组织方式。</p></div>
+    <ul class="callouts" aria-label="可见变化"><li>设备标题显示在线状态与数量</li><li>行内不再重复设备名</li><li>每组内部保留父子树与活动排序</li></ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">默认列表</strong><span>304px 侧栏 · 相同数据</span></header>
+      <div class="product-surface">
+        <div class="rail">
+          <div class="rail-head"><div><h2>Sessions</h2><p>5 current sessions</p></div><button class="new" aria-label="New Session">+</button></div>
+          <div class="tools"><div class="search">⌕&nbsp;&nbsp;Search sessions, agents, devices</div><div class="filters"><span class="chip active">All</span><span class="chip">Active 2</span><span class="chip waiting">Needs input 1</span><span class="chip failed">Failed 1</span><button class="view-button" aria-label="View options">⋯</button></div></div>
+          <div class="list">
+            <div class="row selected parent-tree is-hovered"><span class="tree-control"><span class="dot running"></span><button class="tree-toggle" aria-label="Collapse Release desktop client"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button></span><div class="copy"><div class="title-line"><span class="title">Release desktop client</span><span class="count">1</span></div><div class="meta">Running · Studio laptop</div><div class="preview">Update installer checks and verify the release workflow…</div></div><span class="time">now</span></div>
+            <div class="row child last-tree"><span class="dot waiting"></span><div class="copy"><div class="title-line"><span class="title">Confirm signing identity</span></div><div class="meta">Needs input · Studio laptop</div></div><span class="time">4m</span></div>
+            <div class="row"><span class="dot idle"></span><div class="copy"><div class="title-line"><span class="title">Investigate browser tests</span></div><div class="meta">Available · Work desktop</div><div class="preview">The latest browser run completed successfully.</div></div><span class="time">18m</span></div>
+            <div class="row"><span class="dot failed"></span><div class="copy"><div class="title-line"><span class="title">Repair preview deployment</span></div><div class="meta">Failed · Travel laptop</div><div class="preview">Deployment stopped after the asset upload failed.</div></div><span class="time">1h</span></div>
+            <div class="row"><span class="dot idle"></span><div class="copy"><div class="title-line"><span class="title">Review connector logs</span></div><div class="meta">Available · Work desktop</div></div><span class="time">2h</span></div>
+          </div>
+          <div class="footer"><span>● 2 online</span><span>3 Devices</span></div>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">Group by Device</strong><span>304px 侧栏 · 相同数据</span></header>
+      <div class="product-surface">
+        <div class="rail">
+          <div class="rail-head"><div><h2>Sessions</h2><p>5 sessions on 3 devices</p></div><button class="new" aria-label="New Session">+</button></div>
+          <div class="tools"><div class="search">⌕&nbsp;&nbsp;Search sessions, agents, devices</div><div class="filters"><span class="chip active">All</span><span class="chip">Active 2</span><span class="chip waiting">Needs input 1</span><span class="chip failed">Failed 1</span><button class="view-button" aria-label="View options, Group by Device enabled">⋯</button></div></div>
+          <div class="list">
+            <section class="device-group" aria-labelledby="device-studio">
+              <div class="device-group-header"><span class="online-pin"></span><strong id="device-studio">Studio laptop</strong><span>2</span><span class="device-state">online</span></div>
+              <div class="row selected parent-tree is-hovered"><span class="tree-control"><span class="dot running"></span><button class="tree-toggle" aria-label="Collapse Release desktop client"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button></span><div class="copy"><div class="title-line"><span class="title">Release desktop client</span><span class="count">1</span></div><div class="meta">Running<span class="device-name"> · Studio laptop</span></div><div class="preview">Update installer checks and verify the release workflow…</div></div><span class="time">now</span></div>
+              <div class="row child last-tree"><span class="dot waiting"></span><div class="copy"><div class="title-line"><span class="title">Confirm signing identity</span></div><div class="meta">Needs input<span class="device-name"> · Studio laptop</span></div></div><span class="time">4m</span></div>
+            </section>
+            <section class="device-group" aria-labelledby="device-work">
+              <div class="device-group-header"><span class="online-pin"></span><strong id="device-work">Work desktop</strong><span>2</span><span class="device-state">online</span></div>
+              <div class="row"><span class="dot idle"></span><div class="copy"><div class="title-line"><span class="title">Investigate browser tests</span></div><div class="meta">Available<span class="device-name"> · Work desktop</span></div><div class="preview">The latest browser run completed successfully.</div></div><span class="time">18m</span></div>
+              <div class="row"><span class="dot idle"></span><div class="copy"><div class="title-line"><span class="title">Review connector logs</span></div><div class="meta">Available<span class="device-name"> · Work desktop</span></div></div><span class="time">2h</span></div>
+            </section>
+            <section class="device-group" aria-labelledby="device-travel">
+              <div class="device-group-header"><span class="offline-pin"></span><strong id="device-travel">Travel laptop</strong><span>1</span><span class="device-state">offline</span></div>
+              <div class="row"><span class="dot failed"></span><div class="copy"><div class="title-line"><span class="title">Repair preview deployment</span></div><div class="meta">Failed<span class="device-name"> · Travel laptop</span></div><div class="preview">Deployment stopped after the asset upload failed.</div></div><span class="time">1h</span></div>
+            </section>
+          </div>
+          <div class="footer"><span>● 2 online</span><span>3 Devices</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>function reportHeight(){window.parent.postMessage({type:"ui-review:height",height:document.documentElement.scrollHeight},"*")}new ResizeObserver(reportHeight).observe(document.documentElement);window.addEventListener("load",reportHeight);</script>
+</body>
+</html>
