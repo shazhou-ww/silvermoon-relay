@@ -49,11 +49,48 @@
 - `https://silvermoon.work/` 返回 HTTP 200。
 - 不可变 Pages deployment URL 返回 HTTP 200。
 
-## 尚待真实 Device 冒烟
+## 真实 Device subsession 冒烟
 
-当前环境没有 `SILVERMOON_CONNECTION_TOKEN`、
-`SILVERMOON_CONNECTION_TOKEN_FILE` 或已登录 Web session。没有读取、创建或
-绕过生产凭据，因此无法脱敏查询真实 Session API 或截取父子列表界面。
+验证时间：`2026-10-11T02:14:20Z` 至 `2026-10-11T02:29:26Z`。
 
-`D-S01` 已完成。`D-S02`、`D-AC01` 与需要真实目录多次刷新的 `D-AC02`
-保持未完成，不能把健康检查或自动化测试表述为真实 Device 冒烟。
+- 使用发起方提供的 connection token 启动当前 primary checkout 构建的 Connector；
+  Relay 接受 Device `show-subsessions-smoke`，token 未写入仓库或证据文件，验证后
+  Connector 已停止。
+- 在当前 Agent Host Session 下创建一个只读 delegated chat 作为真实 subsession
+  夹具。Connector 的 AHP provider 随后返回 5 个 Session，其中 1 个携带父级、
+  1 个父 Session 拥有 child、孤儿 child 为 0；父 ID 的脱敏 SHA-256 前 12 位为
+  `39065e1ce7c9`。
+- 生产 Session API 的脱敏结果见
+  [show-subsessions-api.png](./show-subsessions-api.png)：71 个 Session 中找到该
+  child，`parentSessionId` 存在且对应父 Session 也存在；父 ID 与 child 的
+  `parentSessionId` 哈希均为 `39065e1ce7c9`，`canSendMessage=true`。浏览器只在
+  已认证的 `silvermoon.work` 页面内执行只读 fetch，没有导出 cookie。
+- 生产目录截图见
+  [show-subsessions-parent-child.png](./show-subsessions-parent-child.png)：child
+  紧跟父 Session，并相对父项缩进一级。截图只保留这两个相关行，不含账户、
+  connection token 或无关会话内容。
+- 打开 child 后，生产界面显示该 delegated chat 的只读请求以及预期的
+  `Silvermoon Relay` 历史回复，证明 child 历史可独立加载。
+- 连续三次刷新生产目录，每次均显示 13 个当前 smoke Device 条目；父项和 child
+  各恰好 1 个，父项索引始终为 0、child 索引始终为 1，未出现重复或跳位。
+- 冒烟前生产界面已能打开既有 `Copilot SDK test` 顶层 Session；连接新 Device
+  后旧 Device 与既有顶层项仍保留。缺失父级、跨 Device、自引用和循环关系继续由
+  `apps/web/src/session-list.test.ts` 的回归覆盖。
+
+## 冒烟后复核
+
+- `https://relay.silvermoon.work/health` 返回 HTTP 200 与
+  `{"service":"silvermoon-relay","status":"ok"}`。
+- `https://silvermoon.work/` 返回 HTTP 200。
+- 再次查询不可变 release
+  [run 38049004097](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38049004097)
+  时，head 仍为 `c0471854668e`，`check` 与 `deploy` jobs 仍为 `success`；
+  migration、Worker 和 Pages 步骤均保持成功。
+- Connector 单元测试现为 3 个文件、19 项全部通过；TypeScript 检查、构建与声明
+  文件生成通过。
+- 当前 checkout 的完整 `pnpm check` 通过；lint 仅保留既有的两个 Fast Refresh
+  warning，全部 workspace 类型检查、测试与生产构建成功。
+- Web 的 24 项 Playwright 桌面、移动与窄屏回归全部通过；本地隔离 D1 从空库依次
+  应用全部六个 migration，`0006_session_hierarchy.sql` 最终状态为成功。
+
+`D-S01`、`D-S02`、`D-AC01` 与 `D-AC02` 的证据均已齐备。
